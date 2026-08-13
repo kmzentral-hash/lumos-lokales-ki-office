@@ -66,6 +66,8 @@ vectorstore/
 # Local AI models and model caches
 models/
 core/models/
+tools/
+runtime/
 *.gguf
 *.safetensors
 *.onnx

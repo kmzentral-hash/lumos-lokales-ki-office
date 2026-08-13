@@ -95,6 +95,34 @@ Startbeispiel fuer einen bereits installierten llama-server, ohne Modellvorgabe:
 llama-server --host 127.0.0.1 --port 8080 -m "<pfad-zum-lokal-vorhandenen-modell>"
 ```
 
+Lokaler Qwen-Test mit der dokumentierten llama.cpp Runtime:
+
+```powershell
+.\start-llm.ps1
+.\start-backend-llm.ps1
+npm run dev
+```
+
+Danach:
+
+- Frontend: `http://127.0.0.1:1420`
+- Backend: `http://127.0.0.1:8765/docs`
+- llama-server: `http://127.0.0.1:8080/v1/models`
+
+Stoppen:
+
+```powershell
+.\stop-llm.ps1
+```
+
+Die erwartete lokale Modellstruktur ist:
+
+```text
+models/Qwen/Qwen2.5-7B-Instruct-GGUF/
+  qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf
+  qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf
+```
+
 Sicherheitsregeln:
 
 - Standardmaessig sind nur Loopback-Adressen wie `127.0.0.1` oder `localhost` als LLM-Base-URL erlaubt.
