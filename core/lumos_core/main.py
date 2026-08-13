@@ -81,11 +81,19 @@ async def legacy_docs() -> RedirectResponse:
 
 @app.get("/api/v1/health")
 async def health() -> dict[str, object]:
+    llm_configured = False
+    llm_reachable = False
+    llm_base_url = settings.llm_base_url
     try:
         llm_provider = provider_from_settings()
-        llm_state = "configured" if llm_provider.configured else "not_configured"
+        status = await llm_provider.status()
+        llm_configured = status.configured
+        llm_reachable = status.reachable
+        llm_base_url = status.base_url
+        llm_state = "reachable" if llm_reachable else ("configured" if llm_configured else "not_configured")
     except LLMUnsafeBaseUrlError:
         llm_state = "invalid_base_url"
+
     return {
         "status": "ok",
         "service": settings.app_name,
@@ -97,5 +105,10 @@ async def health() -> dict[str, object]:
             "llm": llm_state,
             "retrieval": "ready",
             "search": "ready",
+        },
+        "llm_details": {
+            "configured": llm_configured,
+            "reachable": llm_reachable,
+            "base_url": llm_base_url,
         },
     }

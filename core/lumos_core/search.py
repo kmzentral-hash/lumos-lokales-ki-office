@@ -69,6 +69,7 @@ class RAGAnswerResponse(BaseModel):
     model: str | None
     grounded: bool
     insufficient_evidence: bool
+    llm_available: bool = True
     warning: str | None = None
 
 
@@ -328,13 +329,13 @@ async def rag_answer(request: SearchRequest) -> RAGAnswerResponse:
             warning=filter_warning,
         )
     except LLMConfigurationError as exc:
-        warning = exc.message
+        warning = f"Die lokale KI ist nicht konfiguriert: {exc.message}"
     except LLMTimeoutError as exc:
-        warning = exc.message
+        warning = f"Die lokale KI antwortet nicht rechtzeitig: {exc.message}"
     except LLMConnectionError as exc:
-        warning = exc.message
+        warning = f"Die lokale KI (llama-server) ist aktuell nicht erreichbar: {exc.message}"
     except LLMError as exc:
-        warning = exc.message
+        warning = f"Die lokale KI steht derzeit nicht zur Verfügung: {exc.message}"
 
     return RAGAnswerResponse(
         answer="Lokale KI-Antwort ist nicht verfuegbar. Die Fundstellen bleiben unten sichtbar.",
@@ -342,5 +343,6 @@ async def rag_answer(request: SearchRequest) -> RAGAnswerResponse:
         model=None,
         grounded=False,
         insufficient_evidence=False,
-        warning=filter_warning or warning,
+        llm_available=False,
+        warning=warning,
     )

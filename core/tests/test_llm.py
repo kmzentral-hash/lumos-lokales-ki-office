@@ -220,3 +220,38 @@ def test_search_metadata_filter() -> None:
     assert resp_type.status_code == 200
     assert all(hit["document_name"].endswith(".md") for hit in resp_type.json()["hits"])
 
+
+def test_answer_returns_clear_error_when_llm_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
+    client.post(
+        "/api/v1/documents",
+        files={"file": ("offline-test.txt", BytesIO(b"Eislicht Quellentext fuer Offline-Test"), "text/plain")},
+    )
+
+    class OfflineProvider:
+        model = "local-offline"
+
+        async def chat(self, messages: list[dict[str, str]], temperature: float = 0.1) -> str:
+            raise search.LLMConnectionError("llama-server ist nicht erreichbar.")
+
+    monkeypatch.setattr(search, "provider_from_settings", lambda: OfflineProvider())
+    response = client.post("/api/v1/answer", json={"query": "Eislicht Quellentext", "limit": 5})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["llm_available"] is False
+    assert body["grounded"] is False
+    assert body["sources"] != []
+    assert "llama-server" in body["warning"]
+
+
+def test_health_reports_llm_status_without_secrets() -> None:
+    response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert "components" in body
+    assert "llm" in body["components"]
+    assert "llm_details" in body
+    assert "base_url" in body["llm_details"]
+    assert "api_key" not in body["llm_details"]
+
+
