@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import re
 import sqlite3
+import zipfile
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -19,6 +21,7 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DOCUMENT_DIR = DATA_DIR / "documents"
 DATABASE_PATH = DATA_DIR / "lumos.db"
 MAX_FILE_SIZE = 25 * 1024 * 1024
+MAX_DOCUMENT_BYTES = MAX_FILE_SIZE
 TEXT_TYPES = {".pdf", ".docx", ".txt", ".md", ".markdown"}
 IMAGE_TYPES = {".png", ".jpg", ".jpeg"}
 ALLOWED_TYPES = {
@@ -31,6 +34,14 @@ ALLOWED_TYPES = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
 }
+
+
+@dataclass(frozen=True)
+class DocumentValidationResult:
+    status: str
+    file_type: str | None
+    sha256: str | None
+    reason: str | None = None
 
 
 class ValidationResult:
@@ -48,17 +59,21 @@ def calculate_sha256(path: Path) -> str:
     return hasher.hexdigest()
 
 
+def get_document_extension(path: Path | str) -> str:
+    return Path(path).suffix.lower()
+
+
 def is_supported_document_extension(path: Path | str) -> bool:
-    suffix = Path(path).suffix.lower()
+    suffix = get_document_extension(path)
     return suffix in ALLOWED_TYPES
 
 
 def detect_document_kind(path: Path | str, content: bytes | None = None) -> str:
-    suffix = Path(path).suffix.lower()
+    suffix = get_document_extension(path)
     if content is None and Path(path).is_file():
         try:
             with Path(path).open("rb") as handle:
-                content = handle.read(4096)
+                content = handle.read(MAX_DOCUMENT_BYTES)
         except OSError:
             content = b""
     content = content or b""
@@ -66,10 +81,19 @@ def detect_document_kind(path: Path | str, content: bytes | None = None) -> str:
     if suffix == ".pdf" and content.startswith(b"%PDF-"):
         return "pdf"
     if suffix == ".docx" and content.startswith(b"PK\x03\x04"):
-        return "docx"
+        try:
+            with zipfile.ZipFile(BytesIO(content)) as zf:
+                names = zf.namelist()
+                if "[Content_Types].xml" in names and any(n.startswith("word/") for n in names):
+                    return "docx"
+        except Exception:  # noqa: BLE001
+            return "unknown"
+        return "unknown"
     if suffix in {".png", ".jpg", ".jpeg"} and content.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff")):
         return "image"
     if suffix in {".txt", ".md", ".markdown"}:
+        if b"\x00" in content:
+            return "unknown"
         try:
             content.decode("utf-8")
             return "markdown" if suffix in {".md", ".markdown"} else "text"
@@ -96,6 +120,62 @@ def validate_document_path(path: Path, allowed_root: Path | None = None) -> Vali
         return ValidationResult(valid=False, error="Dateiendung ist nicht freigegeben.", status_code="rejected")
 
     return ValidationResult(valid=True, status_code="accepted")
+
+
+def validate_document_file(path: Path, allowed_root: Path | None = None) -> DocumentValidationResult:
+    path_val = validate_document_path(path, allowed_root=allowed_root)
+    if not path_val.valid:
+        return DocumentValidationResult(
+            status=path_val.status_code,
+            file_type=None,
+            sha256=None,
+            reason=path_val.error,
+        )
+
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        return DocumentValidationResult(
+            status="error",
+            file_type=None,
+            sha256=None,
+            reason=f"Dateizugriff fehlgeschlagen: {exc}",
+        )
+
+    if size > MAX_DOCUMENT_BYTES:
+        return DocumentValidationResult(
+            status="rejected",
+            file_type=get_document_extension(path).removeprefix("."),
+            sha256=None,
+            reason="Die Datei überschreitet das Limit von 25 MB.",
+        )
+
+    try:
+        content = path.read_bytes()
+    except OSError as exc:
+        return DocumentValidationResult(
+            status="error",
+            file_type=None,
+            sha256=None,
+            reason=f"Datei konnte nicht gelesen werden: {exc}",
+        )
+
+    kind = detect_document_kind(path, content=content)
+    if kind == "unknown":
+        return DocumentValidationResult(
+            status="quarantined",
+            file_type=get_document_extension(path).removeprefix("."),
+            sha256=None,
+            reason="Dateiendung und Dateiinhalt stimmen nicht überein.",
+        )
+
+    sha = calculate_sha256(path)
+    return DocumentValidationResult(
+        status="accepted",
+        file_type=kind,
+        sha256=sha,
+        reason=None,
+    )
 
 
 def _connection() -> sqlite3.Connection:

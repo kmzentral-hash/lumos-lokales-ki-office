@@ -1,9 +1,18 @@
+import zipfile
 from io import BytesIO
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from lumos_core.documents import DOCUMENT_DIR, _connection
+from lumos_core.documents import (
+    DOCUMENT_DIR,
+    _connection,
+    calculate_sha256,
+    detect_document_kind,
+    get_document_extension,
+    is_supported_document_extension,
+    validate_document_file,
+)
 from lumos_core.main import app
 
 client = TestClient(app)
@@ -316,4 +325,70 @@ def test_does_not_modify_original_file(tmp_path: Path) -> None:
     )
     assert response.status_code in {200, 201}
     assert sample.read_bytes() == original_bytes
+
+
+def test_accepts_markdown_document() -> None:
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("notizen.markdown", BytesIO(b"# Markdown Notizen"), "text/markdown")},
+    )
+    assert response.status_code in {200, 201}
+    assert response.json()["document"]["name"] == "notizen.markdown"
+    assert response.json()["document"]["status"] == "ready"
+
+
+def test_accepts_minimal_docx_zip() -> None:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("[Content_Types].xml", "<Types></Types>")
+        zf.writestr("word/document.xml", "<w:document></w:document>")
+    content = buffer.getvalue()
+
+    response = client.post(
+        "/api/v1/documents",
+        files={
+            "file": (
+                "minimal.docx",
+                BytesIO(content),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+    assert response.status_code in {200, 201}
+    assert response.json()["document"]["name"] == "minimal.docx"
+
+
+def test_rejects_fake_docx_zip_without_content_types() -> None:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("archiv.txt", "kein docx")
+    content = buffer.getvalue()
+
+    response = client.post(
+        "/api/v1/documents",
+        files={
+            "file": (
+                "fake.docx",
+                BytesIO(content),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+    assert response.status_code == 415
+    assert "Dateiendung und Dateiinhalt stimmen nicht" in response.json()["detail"]
+
+
+def test_validate_document_file_helpers(tmp_path: Path) -> None:
+    sample = tmp_path / "valid.txt"
+    sample.write_bytes(b"Valider Dateiinhalt")
+    assert get_document_extension(sample) == ".txt"
+    assert is_supported_document_extension(sample) is True
+    assert detect_document_kind(sample) == "text"
+    assert calculate_sha256(sample) is not None
+
+    res = validate_document_file(sample, allowed_root=tmp_path)
+    assert res.status == "accepted"
+    assert res.file_type == "text"
+    assert res.reason is None
+
 
