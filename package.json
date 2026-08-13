@@ -1,0 +1,20 @@
+{
+  "name": "lumos-local-office",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "latest",
+    "@tsconfig/svelte": "latest",
+    "svelte": "latest",
+    "svelte-check": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}
