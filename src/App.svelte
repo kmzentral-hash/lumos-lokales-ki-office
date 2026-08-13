@@ -19,6 +19,10 @@
   let importMessage = 'PDF, DOCX, TXT, Markdown und Bilder bis 25 MB';
   let message = 'Importiere ein Dokument und stelle anschließend eine Frage an deinen lokalen Wissensraum.';
   let lastError = '';
+  const formatNumber = (value: unknown) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric.toLocaleString('de-DE') : '0';
+  };
   $: readyDocuments = documents.filter((document) => document.status === 'ready').length;
   $: failedDocuments = documents.filter((document) => document.status === 'failed' || document.status === 'unsupported').length;
   $: latestDocumentError = documents.find((document) => document.error_message)?.error_message || '';
@@ -157,8 +161,8 @@
         <article class:online={health}><span>Backend</span><b>{health ? 'Erreichbar' : checking ? 'Prüfung läuft' : 'Nicht erreichbar'}</b><small>{health?.version ? `Version ${health.version}` : 'FastAPI Core auf 127.0.0.1:8765'}</small></article>
         <article class:online={searchApiAvailable}><span>RAG-Suche</span><b>{searchApiAvailable ? 'Verfügbar' : 'Nicht verfügbar'}</b><small>POST /api/v1/search</small></article>
         <article class:online={llmReady} class:error={Boolean(llmStatus?.last_error)}><span>Lokale KI</span><b>{llmReady ? 'Antwortbereit' : llmStatus?.configured ? 'Nicht erreichbar' : 'Nicht konfiguriert'}</b><small>{llmStatus?.model || 'LUMOS_LLM_MODEL nicht gesetzt'} · llama-server optional</small></article>
-        <article><span>Dokumente</span><b>{documents.length.toLocaleString('de-DE')}</b><small>lokal gespeichert</small></article>
-        <article class:online={readyDocuments > 0}><span>RAG-bereit</span><b>{readyDocuments.toLocaleString('de-DE')}</b><small>{failedDocuments.toLocaleString('de-DE')} mit Fehler oder nicht unterstützt</small></article>
+        <article><span>Dokumente</span><b>{formatNumber(documents.length)}</b><small>lokal gespeichert</small></article>
+        <article class:online={readyDocuments > 0}><span>RAG-bereit</span><b>{formatNumber(readyDocuments)}</b><small>{formatNumber(failedDocuments)} mit Fehler oder nicht unterstützt</small></article>
         <article class:error={systemError !== 'Keine aktuelle Fehlermeldung.'}><span>Letzte Meldung</span><b>{systemError}</b><small>{coreReady ? 'Core bereit' : 'Status bitte prüfen'}</small></article>
       </div>
     </section>
@@ -189,7 +193,7 @@
         {#if documents.length === 0}
           <div class="empty-state"><i>◇</i><h3>Noch kein Dokument</h3><p>Füge dein erstes freigegebenes Dokument hinzu. Alle Daten bleiben lokal.</p></div>
         {:else}
-          <div class="document-list">{#each documents as item}<article><b>{item.type}</b><div><h3>{item.name}</h3><p>{(Number(item.size) || 0)/1024 < 0.1 ? '0,0' : ((Number(item.size) || 0)/1024).toFixed(1)} KB · {(Number(item.character_count ?? item.extracted_chars) || 0).toLocaleString('de-DE')} Zeichen · {(Number(item.chunk_count) || 0).toLocaleString('de-DE')} Chunks · {item.sha256?.slice(0,12) || '–'}…</p>{#if item.status !== 'ready' && (Number(item.character_count ?? item.extracted_chars) || 0) === 0}<small class="document-warning">Noch nicht RAG-bereit: bitte neu verarbeiten oder Fehler prüfen.</small>{/if}{#if item.error_message}<small class="document-error">{item.error_message}</small>{/if}</div><div class="document-actions"><span class:failed={item.status === 'failed' || item.status === 'unsupported'}>{statusLabel(item.status)}</span><div><button type="button" on:click={() => openDocument(item)}>Details / Öffnen</button><button type="button" on:click={() => processDocument(item)} disabled={processingId === item.id}>{processingId === item.id ? 'Verarbeite …' : 'Neu verarbeiten'}</button><button class="danger" type="button" on:click={() => removeDocument(item)} disabled={deletingId === item.id}>{deletingId === item.id ? 'Entferne …' : 'Löschen'}</button></div></div></article>{/each}</div>
+          <div class="document-list">{#each documents as item}<article><b>{item.type}</b><div><h3>{item.name}</h3><p>{(Number(item.size) || 0)/1024 < 0.1 ? '0,0' : ((Number(item.size) || 0)/1024).toFixed(1)} KB · {formatNumber(item.character_count ?? item.extracted_chars)} Zeichen · {formatNumber(item.chunk_count)} Chunks · {item.sha256?.slice(0,12) || '–'}…</p>{#if item.status !== 'ready' && (Number(item.character_count ?? item.extracted_chars) || 0) === 0}<small class="document-warning">Noch nicht RAG-bereit: bitte neu verarbeiten oder Fehler prüfen.</small>{/if}{#if item.error_message}<small class="document-error">{item.error_message}</small>{/if}</div><div class="document-actions"><span class:failed={item.status === 'failed' || item.status === 'unsupported'}>{statusLabel(item.status)}</span><div><button type="button" on:click={() => openDocument(item)}>Details / Öffnen</button><button type="button" on:click={() => processDocument(item)} disabled={processingId === item.id}>{processingId === item.id ? 'Verarbeite …' : 'Neu verarbeiten'}</button><button class="danger" type="button" on:click={() => removeDocument(item)} disabled={deletingId === item.id}>{deletingId === item.id ? 'Entferne …' : 'Löschen'}</button></div></div></article>{/each}</div>
         {/if}
       </div>
     </section>
@@ -199,7 +203,7 @@
         <div class="document-modal-card" role="dialog" aria-modal="true" aria-label="Dokumentdetails" tabindex="-1">
           <button class="modal-close" aria-label="Schließen" on:click={() => selectedDocument = null}>×</button>
           <p class="eyebrow">DOKUMENTDETAILS</p><h2>{selectedDocument.name}</h2>
-          <dl><div><dt>Status</dt><dd>{statusLabel(selectedDocument.status)}</dd></div><div><dt>Größe</dt><dd>{((Number(selectedDocument.size) || 0)/1024).toFixed(1)} KB</dd></div><div><dt>Zeichen</dt><dd>{(Number(selectedDocument.character_count ?? selectedDocument.extracted_chars) || 0).toLocaleString('de-DE')}</dd></div><div><dt>Chunks</dt><dd>{(Number(selectedDocument.chunk_count) || 0).toLocaleString('de-DE')}</dd></div><div><dt>SHA-256</dt><dd>{selectedDocument.sha256}</dd></div></dl>
+          <dl><div><dt>Status</dt><dd>{statusLabel(selectedDocument.status)}</dd></div><div><dt>Größe</dt><dd>{((Number(selectedDocument.size) || 0)/1024).toFixed(1)} KB</dd></div><div><dt>Zeichen</dt><dd>{formatNumber(selectedDocument.character_count ?? selectedDocument.extracted_chars)}</dd></div><div><dt>Chunks</dt><dd>{formatNumber(selectedDocument.chunk_count)}</dd></div><div><dt>SHA-256</dt><dd>{selectedDocument.sha256}</dd></div></dl>
           {#if selectedDocument.error_message}<p class="document-error">{selectedDocument.error_message}</p>{/if}
           <h3>Extrahierter Text</h3><pre>{selectedDocument.content || 'Kein extrahierter Text verfügbar.'}</pre>
         </div>

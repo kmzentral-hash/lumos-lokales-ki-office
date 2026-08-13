@@ -11,8 +11,8 @@ client = TestClient(app)
 def test_openapi_registers_search_as_post_only() -> None:
     schema = client.get("/openapi.json").json()
     assert "post" in schema["paths"]["/api/v1/search"]
-    assert "get" not in schema["paths"]["/api/v1/search"]
-    assert client.get("/api/v1/search").status_code == 405
+    assert "get" in schema["paths"]["/api/v1/search"]
+    assert client.get("/api/v1/search", params={"query": "LumOS"}).status_code == 200
 
 
 def test_import_and_list_document() -> None:
@@ -55,6 +55,67 @@ def test_duplicate_upload_is_counted_once() -> None:
     listing = client.get("/api/v1/documents").json()["documents"]
     matching = [document for document in listing if document["sha256"] == first.json()["document"]["sha256"]]
     assert len(matching) == 1
+
+
+def test_listing_dedupes_legacy_duplicate_rows_by_sha() -> None:
+    with _connection() as connection:
+        digest = "deadbeef" * 8
+        base = {
+            "name": "altbestand.txt",
+            "stored_name": "legacy-a.txt",
+            "extension": ".txt",
+            "media_type": "text/plain",
+            "size": 10,
+            "sha256": digest,
+            "status": "stored",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "extracted_chars": 0,
+            "error_message": None,
+            "extracted_text": "",
+        }
+        connection.execute(
+            "INSERT OR REPLACE INTO documents "
+            "(id,name,stored_name,extension,media_type,size,sha256,status,created_at,"
+            "extracted_chars,error_message,extracted_text) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "legacy-1",
+                base["name"],
+                base["stored_name"],
+                base["extension"],
+                base["media_type"],
+                base["size"],
+                base["sha256"],
+                base["status"],
+                base["created_at"],
+                base["extracted_chars"],
+                base["error_message"],
+                base["extracted_text"],
+            ),
+        )
+        connection.execute(
+            "INSERT OR REPLACE INTO documents "
+            "(id,name,stored_name,extension,media_type,size,sha256,status,created_at,"
+            "extracted_chars,error_message,extracted_text) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "legacy-2",
+                base["name"],
+                "legacy-b.txt",
+                base["extension"],
+                base["media_type"],
+                base["size"],
+                base["sha256"],
+                base["status"],
+                "2026-01-02T00:00:00+00:00",
+                base["extracted_chars"],
+                base["error_message"],
+                base["extracted_text"],
+            ),
+        )
+
+    listing = client.get("/api/v1/documents")
+    assert listing.status_code == 200
+    matches = [document for document in listing.json()["documents"] if document["sha256"] == digest]
+    assert len(matches) == 1
 
 
 def test_delete_document_removes_metadata_and_search_chunks() -> None:

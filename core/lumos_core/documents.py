@@ -108,6 +108,19 @@ def _chunk_count(connection: sqlite3.Connection, document_id: str) -> int:
     )
 
 
+def _dedupe_rows_by_sha(rows: list[sqlite3.Row]) -> list[sqlite3.Row]:
+    # Keep the newest entry per SHA-256, preserving list order.
+    seen: set[str] = set()
+    deduped: list[sqlite3.Row] = []
+    for row in rows:
+        digest = str(row["sha256"])
+        if digest in seen:
+            continue
+        seen.add(digest)
+        deduped.append(row)
+    return deduped
+
+
 def _as_dict(
     row: sqlite3.Row, connection: sqlite3.Connection, include_content: bool = False
 ) -> dict[str, object]:
@@ -223,8 +236,9 @@ def _process_document(connection: sqlite3.Connection, row: sqlite3.Row) -> sqlit
 async def list_documents() -> dict[str, object]:
     with _connection() as connection:
         rows = connection.execute("SELECT * FROM documents ORDER BY created_at DESC").fetchall()
-        documents = [_as_dict(row, connection) for row in rows]
-    return {"documents": documents, "count": len(rows)}
+        unique_rows = _dedupe_rows_by_sha(rows)
+        documents = [_as_dict(row, connection) for row in unique_rows]
+    return {"documents": documents, "count": len(unique_rows)}
 
 
 @router.get("/{document_id}")
@@ -286,7 +300,10 @@ async def import_document(file: Annotated[UploadFile, File()]) -> dict[str, obje
 
     digest = hashlib.sha256(content).hexdigest()
     with _connection() as connection:
-        existing = connection.execute("SELECT * FROM documents WHERE sha256=?", (digest,)).fetchone()
+        existing = connection.execute(
+            "SELECT * FROM documents WHERE sha256=? ORDER BY created_at DESC LIMIT 1",
+            (digest,),
+        ).fetchone()
         if existing:
             if existing["extension"] in TEXT_TYPES and not existing["extracted_text"]:
                 existing = _process_document(connection, existing)
