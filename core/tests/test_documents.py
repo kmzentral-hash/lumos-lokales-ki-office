@@ -1,4 +1,5 @@
 from io import BytesIO
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -238,3 +239,81 @@ def test_txt_upload_to_search_integration() -> None:
     hit = search.json()["hits"][0]
     assert hit["document_name"] == "sprichwort.txt"
     assert "Bernsteinfalke" in hit["excerpt"]
+
+
+def test_accepts_supported_text_document() -> None:
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("test.txt", BytesIO(b"Inhalt eines unterstuetzten Textdokuments."), "text/plain")},
+    )
+    assert response.status_code in {200, 201}
+    assert response.json()["document"]["name"] == "test.txt"
+    assert response.json()["document"]["status"] == "ready"
+
+
+def test_rejects_unsupported_extension() -> None:
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("skript.exe", BytesIO(b"MZ\x90\x00"), "application/x-msdownload")},
+    )
+    assert response.status_code == 415
+    assert "nicht freigegeben" in response.json()["detail"]
+
+
+def test_rejects_fake_pdf_with_wrong_magic_number() -> None:
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("schadcode.pdf", BytesIO(b"Das ist kein PDF Header"), "application/pdf")},
+    )
+    assert response.status_code == 415
+    assert "Dateiendung und Dateiinhalt stimmen nicht" in response.json()["detail"]
+
+
+def test_accepts_realistic_pdf_header() -> None:
+    pdf_bytes = b"%PDF-1.4\n1 0 obj\n<< >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF"
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("minimal.pdf", BytesIO(pdf_bytes), "application/pdf")},
+    )
+    assert response.status_code in {200, 201}
+    assert response.json()["document"]["name"] == "minimal.pdf"
+
+
+def test_detects_duplicate_by_sha256() -> None:
+    content = b"Stabile SHA256 Erkennung fuer Duplikate"
+    first = client.post(
+        "/api/v1/documents",
+        files={"file": ("orig.txt", BytesIO(content), "text/plain")},
+    )
+    second = client.post(
+        "/api/v1/documents",
+        files={"file": ("kopie.txt", BytesIO(content), "text/plain")},
+    )
+    assert first.status_code in {200, 201}
+    assert second.status_code in {200, 201}
+    assert second.json()["duplicate"] is True
+    assert second.json()["document"]["sha256"] == first.json()["document"]["sha256"]
+
+
+def test_rejects_oversized_document() -> None:
+    large_content = b"x" * (25 * 1024 * 1024 + 1)
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("gross.txt", BytesIO(large_content), "text/plain")},
+    )
+    assert response.status_code == 413
+    assert "überschreitet das Limit" in response.json()["detail"]
+
+
+def test_does_not_modify_original_file(tmp_path: Path) -> None:
+    sample = tmp_path / "original.txt"
+    sample.write_bytes(b"Originaler unveraenderter Dateiinhalt.")
+    original_bytes = sample.read_bytes()
+
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("original.txt", BytesIO(original_bytes), "text/plain")},
+    )
+    assert response.status_code in {200, 201}
+    assert sample.read_bytes() == original_bytes
+

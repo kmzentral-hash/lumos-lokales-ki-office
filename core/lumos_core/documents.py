@@ -19,17 +19,83 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DOCUMENT_DIR = DATA_DIR / "documents"
 DATABASE_PATH = DATA_DIR / "lumos.db"
 MAX_FILE_SIZE = 25 * 1024 * 1024
-TEXT_TYPES = {".pdf", ".docx", ".txt", ".md"}
+TEXT_TYPES = {".pdf", ".docx", ".txt", ".md", ".markdown"}
 IMAGE_TYPES = {".png", ".jpg", ".jpeg"}
 ALLOWED_TYPES = {
     ".pdf": "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".txt": "text/plain",
     ".md": "text/markdown",
+    ".markdown": "text/markdown",
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
 }
+
+
+class ValidationResult:
+    def __init__(self, valid: bool, error: str | None = None, status_code: str = "accepted") -> None:
+        self.valid = valid
+        self.error = error
+        self.status_code = status_code
+
+
+def calculate_sha256(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as file_handle:
+        while chunk := file_handle.read(65536):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def is_supported_document_extension(path: Path | str) -> bool:
+    suffix = Path(path).suffix.lower()
+    return suffix in ALLOWED_TYPES
+
+
+def detect_document_kind(path: Path | str, content: bytes | None = None) -> str:
+    suffix = Path(path).suffix.lower()
+    if content is None and Path(path).is_file():
+        try:
+            with Path(path).open("rb") as handle:
+                content = handle.read(4096)
+        except OSError:
+            content = b""
+    content = content or b""
+
+    if suffix == ".pdf" and content.startswith(b"%PDF-"):
+        return "pdf"
+    if suffix == ".docx" and content.startswith(b"PK\x03\x04"):
+        return "docx"
+    if suffix in {".png", ".jpg", ".jpeg"} and content.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff")):
+        return "image"
+    if suffix in {".txt", ".md", ".markdown"}:
+        try:
+            content.decode("utf-8")
+            return "markdown" if suffix in {".md", ".markdown"} else "text"
+        except UnicodeDecodeError:
+            return "unknown"
+    return "unknown"
+
+
+def validate_document_path(path: Path, allowed_root: Path | None = None) -> ValidationResult:
+    if not path.exists():
+        return ValidationResult(valid=False, error="Datei existiert nicht.", status_code="rejected")
+    if not path.is_file():
+        return ValidationResult(valid=False, error="Pfad verweist auf keine reguläre Datei.", status_code="rejected")
+
+    resolved = path.resolve()
+    if allowed_root is not None:
+        root_resolved = allowed_root.resolve()
+        try:
+            resolved.relative_to(root_resolved)
+        except ValueError:
+            return ValidationResult(valid=False, error="Pfad liegt außerhalb der erlaubten Importwurzel.", status_code="quarantined")
+
+    if not is_supported_document_extension(path):
+        return ValidationResult(valid=False, error="Dateiendung ist nicht freigegeben.", status_code="rejected")
+
+    return ValidationResult(valid=True, status_code="accepted")
 
 
 def _connection() -> sqlite3.Connection:
@@ -71,7 +137,7 @@ def _connection() -> sqlite3.Connection:
         "UPDATE documents SET status = CASE "
         "WHEN extension IN ('.png', '.jpg', '.jpeg') THEN 'unsupported' "
         "WHEN extracted_chars > 0 THEN 'ready' ELSE 'stored' END "
-        "WHERE status NOT IN ('stored', 'processing', 'ready', 'failed', 'unsupported')"
+        "WHERE status NOT IN ('stored', 'processing', 'ready', 'failed', 'unsupported', 'accepted', 'rejected', 'quarantined')"
     )
     connection.commit()
     return connection
@@ -83,20 +149,17 @@ def _safe_name(filename: str) -> str:
 
 
 def _valid_signature(extension: str, content: bytes) -> bool:
+    kind = detect_document_kind(Path(f"test{extension}"), content)
     if extension == ".pdf":
-        return content.startswith(b"%PDF-")
+        return kind == "pdf"
     if extension == ".docx":
-        return content.startswith(b"PK\x03\x04")
+        return kind == "docx"
     if extension == ".png":
         return content.startswith(b"\x89PNG\r\n\x1a\n")
     if extension in {".jpg", ".jpeg"}:
         return content.startswith(b"\xff\xd8\xff")
-    if extension in {".txt", ".md"}:
-        try:
-            content.decode("utf-8")
-            return True
-        except UnicodeDecodeError:
-            return False
+    if extension in {".txt", ".md", ".markdown"}:
+        return kind in {"text", "markdown"}
     return False
 
 
@@ -109,7 +172,6 @@ def _chunk_count(connection: sqlite3.Connection, document_id: str) -> int:
 
 
 def _dedupe_rows_by_sha(rows: list[sqlite3.Row]) -> list[sqlite3.Row]:
-    # Keep the newest entry per SHA-256, preserving list order.
     seen: set[str] = set()
     deduped: list[sqlite3.Row] = []
     for row in rows:
@@ -144,7 +206,7 @@ def _as_dict(
 
 
 def _extract_segments(extension: str, content: bytes) -> list[tuple[int | None, str, str]]:
-    if extension in {".txt", ".md"}:
+    if extension in {".txt", ".md", ".markdown"}:
         return [(None, "Gesamtdokument", content.decode("utf-8"))]
     if extension == ".pdf":
         reader = PdfReader(BytesIO(content))
@@ -288,7 +350,7 @@ async def delete_document(document_id: str) -> dict[str, object]:
 async def import_document(file: Annotated[UploadFile, File()]) -> dict[str, object]:
     original_name = _safe_name(file.filename or "dokument")
     extension = Path(original_name).suffix.lower()
-    if extension not in ALLOWED_TYPES:
+    if not is_supported_document_extension(original_name):
         raise HTTPException(status_code=415, detail="Dieser Dateityp ist nicht freigegeben.")
     content = await file.read(MAX_FILE_SIZE + 1)
     if not content:
@@ -323,3 +385,4 @@ async def import_document(file: Annotated[UploadFile, File()]) -> dict[str, obje
         processed = _process_document(connection, row)
         document = _as_dict(processed, connection)
     return {"document": document, "duplicate": False}
+
