@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHealth, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HealthResponse, type SearchResponse } from './lib/api';
+  import { checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHealth, fetchLlmStatus, generateRagAnswer, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HealthResponse, type LlmStatusResponse, type RagAnswerResponse, type SearchResponse } from './lib/api';
   let health: HealthResponse | null = null;
+  let llmStatus: LlmStatusResponse | null = null;
   let searchApiAvailable = false;
   let checking = true;
   let query = '';
@@ -13,6 +14,8 @@
   let selectedDocument: DocumentItem | null = null;
   let searching = false;
   let searchResult: SearchResponse | null = null;
+  let answerResult: RagAnswerResponse | null = null;
+  let chatMode: 'search' | 'answer' = 'search';
   let importMessage = 'PDF, DOCX, TXT, Markdown und Bilder bis 25 MB';
   let message = 'Importiere ein Dokument und stelle anschließend eine Frage an deinen lokalen Wissensraum.';
   let lastError = '';
@@ -21,6 +24,7 @@
   $: latestDocumentError = documents.find((document) => document.error_message)?.error_message || '';
   $: systemError = lastError || latestDocumentError || 'Keine aktuelle Fehlermeldung.';
   $: coreReady = Boolean(health && searchApiAvailable);
+  $: llmReady = Boolean(llmStatus?.generation_available);
   const navItems = ['Start', 'KI-Chat', 'Wissenszentrum', 'Dokumente', 'System'];
   async function checkCore() {
     checking = true;
@@ -28,11 +32,13 @@
     try {
       const coreHealth = await fetchHealth();
       await checkSearchApi();
+      llmStatus = await fetchLlmStatus();
       health = coreHealth;
       searchApiAvailable = true;
       lastError = '';
     } catch (error) {
       health = null;
+      llmStatus = null;
       searchApiAvailable = false;
       lastError = error instanceof Error ? error.message : 'Backend nicht erreichbar.';
     } finally {
@@ -41,12 +47,19 @@
   }
   async function submitQuery() {
     const value=query.trim(); if(!value)return;
-    searching = true; searchResult = null;
+    searching = true; searchResult = null; answerResult = null;
     try {
-      searchResult = await searchDocuments(value);
-      message = searchResult.evidence_found
-        ? searchResult.answer || `${searchResult.count} belegte Fundstelle${searchResult.count===1?'':'n'} im lokalen Wissensraum gefunden.`
-        : searchResult.answer || `Für „${value}“ wurde in den fertig verarbeiteten Dokumenten kein belastbarer Beleg gefunden.`;
+      if (chatMode === 'answer') {
+        answerResult = await generateRagAnswer(value);
+        message = answerResult.warning
+          ? `Lokale KI-Antwort nicht verfügbar: ${answerResult.warning}`
+          : answerResult.answer;
+      } else {
+        searchResult = await searchDocuments(value);
+        message = searchResult.evidence_found
+          ? searchResult.answer || `${searchResult.count} belegte Fundstelle${searchResult.count===1?'':'n'} im lokalen Wissensraum gefunden.`
+          : searchResult.answer || `Für „${value}“ wurde in den fertig verarbeiteten Dokumenten kein belastbarer Beleg gefunden.`;
+      }
     } catch (error) { message = error instanceof Error ? error.message : 'Die lokale Suche ist fehlgeschlagen.'; lastError = message; }
     finally { searching = false; }
   }
@@ -143,6 +156,7 @@
       <div class="status-grid">
         <article class:online={health}><span>Backend</span><b>{health ? 'Erreichbar' : checking ? 'Prüfung läuft' : 'Nicht erreichbar'}</b><small>{health?.version ? `Version ${health.version}` : 'FastAPI Core auf 127.0.0.1:8765'}</small></article>
         <article class:online={searchApiAvailable}><span>RAG-Suche</span><b>{searchApiAvailable ? 'Verfügbar' : 'Nicht verfügbar'}</b><small>POST /api/v1/search</small></article>
+        <article class:online={llmReady} class:error={Boolean(llmStatus?.last_error)}><span>Lokale KI</span><b>{llmReady ? 'Antwortbereit' : llmStatus?.configured ? 'Nicht erreichbar' : 'Nicht konfiguriert'}</b><small>{llmStatus?.model || 'LUMOS_LLM_MODEL nicht gesetzt'} · llama-server optional</small></article>
         <article><span>Dokumente</span><b>{documents.length.toLocaleString('de-DE')}</b><small>lokal gespeichert</small></article>
         <article class:online={readyDocuments > 0}><span>RAG-bereit</span><b>{readyDocuments.toLocaleString('de-DE')}</b><small>{failedDocuments.toLocaleString('de-DE')} mit Fehler oder nicht unterstützt</small></article>
         <article class:error={systemError !== 'Keine aktuelle Fehlermeldung.'}><span>Letzte Meldung</span><b>{systemError}</b><small>{coreReady ? 'Core bereit' : 'Status bitte prüfen'}</small></article>
@@ -195,9 +209,19 @@
     <section class="workspace" id="chat">
       <div class="workspace-copy"><p class="eyebrow">BELEGTE LOKALE SUCHE</p><h2>Frag dein<br/><span>Wissen.</span></h2><p>LumOS durchsucht ausschließlich deine freigegebenen lokalen Dokumente und zeigt jede verwendete Fundstelle offen an.</p></div>
       <div class="chat-card">
-        <div class="chat-head"><span>LUMOS / KI-CHAT</span><span class="state"><i class:online={coreReady}></i>{coreReady?'CORE BEREIT':'CORE OFFLINE'}</span></div>
-        <form on:submit|preventDefault={submitQuery}><textarea bind:value={query} placeholder="Was möchtest du in deinen Dokumenten finden?"></textarea><button type="submit" disabled={searching}>{searching?'Suche läuft …':'Lokal suchen'} <span>›</span></button></form>
+        <div class="chat-head"><span>LUMOS / KI-CHAT</span><span class="state"><i class:online={coreReady}></i>{coreReady?'CORE BEREIT':'CORE OFFLINE'} · {llmReady ? llmStatus?.model : 'LLM optional'}</span></div>
+        <form on:submit|preventDefault={submitQuery}>
+          <div class="chat-mode" aria-label="Chat-Modus">
+            <button type="button" class:active={chatMode === 'search'} on:click={() => chatMode = 'search'}>Quellen suchen</button>
+            <button type="button" class:active={chatMode === 'answer'} on:click={() => chatMode = 'answer'}>Lokale KI-Antwort</button>
+          </div>
+          <textarea bind:value={query} placeholder={chatMode === 'answer' ? 'Welche quellengebundene Antwort soll LumOS lokal erzeugen?' : 'Was möchtest du in deinen Dokumenten finden?'}></textarea>
+          <button type="submit" disabled={searching}>{searching ? chatMode === 'answer' ? 'Antwort entsteht …' : 'Suche läuft …' : chatMode === 'answer' ? 'Lokal beantworten' : 'Lokal suchen'} <span>›</span></button>
+        </form>
         <div class="answer"><b>L</b><p>{message}</p></div>
+        {#if answerResult}
+          <div class="sources"><div class="sources-head">ANTWORTQUELLEN / {answerResult.sources.length} FUNDSTELLEN {answerResult.model ? `· ${answerResult.model}` : ''}</div>{#each answerResult.sources as hit, index}<article><b>[{index+1}]</b><div><h3>{hit.document_name}{hit.page ? ` · Seite ${hit.page}` : ` · ${hit.section}`} · Trefferwert {hit.score.toFixed(2)}</h3><p>{hit.excerpt}</p></div></article>{/each}</div>
+        {/if}
         {#if searchResult?.evidence_found}<div class="sources"><div class="sources-head">QUELLEN / {searchResult.count} FUNDSTELLEN</div>{#each searchResult.hits as hit, index}<article><b>[{index+1}]</b><div><h3>{hit.document_name}{hit.page ? ` · Seite ${hit.page}` : ` · ${hit.section}`} · Trefferwert {hit.score.toFixed(2)}</h3><p>{hit.excerpt}</p></div></article>{/each}</div>{/if}
       </div>
     </section>

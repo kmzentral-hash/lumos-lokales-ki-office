@@ -145,6 +145,18 @@ if (-not (Wait-HttpOk "$BackendUrl/api/v1/health" "Backend Healthcheck" 40)) {
 Write-Step "RAG-Schnittstellen pruefen"
 Test-JsonPost "$BackendUrl/api/v1/search" @{ query = "__lumos_self_heal_probe__"; limit = 1 } "RAG-Suche" | Out-Null
 try {
+    $Llm = Invoke-RestMethod "$BackendUrl/api/v1/llm/status" -TimeoutSec 5
+    if ($Llm.generation_available) {
+        Write-Ok "Lokale KI-Antwort ist verfuegbar ($($Llm.model))"
+    } elseif ($Llm.configured) {
+        Write-Warn "Lokale KI ist konfiguriert, aber nicht erreichbar: $($Llm.last_error)"
+    } else {
+        Write-Warn "Lokale KI ist optional und aktuell nicht konfiguriert."
+    }
+} catch {
+    Write-Warn "LLM-Status konnte nicht geprueft werden: $($_.Exception.Message)"
+}
+try {
     $Documents = Invoke-RestMethod "$BackendUrl/api/v1/documents" -TimeoutSec 5
     $Count = @($Documents.documents).Count
     Write-Ok "Dokument-API ist verfuegbar ($Count Dokumente)"

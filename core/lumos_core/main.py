@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 
 from .config import settings
 from .documents import router as documents_router
+from .llm import LLMUnsafeBaseUrlError, provider_from_settings
 from .search import router as search_router
 
 logger = logging.getLogger("uvicorn.error")
@@ -80,6 +81,11 @@ async def legacy_docs() -> RedirectResponse:
 
 @app.get("/api/v1/health")
 async def health() -> dict[str, object]:
+    try:
+        llm_provider = provider_from_settings()
+        llm_state = "configured" if llm_provider.configured else "not_configured"
+    except LLMUnsafeBaseUrlError:
+        llm_state = "invalid_base_url"
     return {
         "status": "ok",
         "service": settings.app_name,
@@ -88,7 +94,7 @@ async def health() -> dict[str, object]:
         "components": {
             "database": "ready",
             "documents": "ready",
-            "llm": "not_configured",
+            "llm": llm_state,
             "retrieval": "ready",
             "search": "ready",
         },

@@ -24,6 +24,23 @@ export type DocumentItem = {
 
 export type SearchHit = { chunk_id: string; document_id: string; document_name: string; page: number | null; section: string; excerpt: string; score: number; };
 export type SearchResponse = { query: string; evidence_found: boolean; answer: string | null; hits: SearchHit[]; count: number; };
+export type LlmStatusResponse = {
+  configured: boolean;
+  base_url: string;
+  model: string | null;
+  loopback_only: boolean;
+  reachable: boolean;
+  generation_available: boolean;
+  last_error: string | null;
+};
+export type RagAnswerResponse = {
+  answer: string;
+  sources: SearchHit[];
+  model: string | null;
+  grounded: boolean;
+  insufficient_evidence: boolean;
+  warning: string | null;
+};
 
 async function responseError(response: Response, fallback: string): Promise<Error> {
   try {
@@ -117,6 +134,35 @@ export async function searchDocuments(query: string): Promise<SearchResponse> {
   }
   if (!response.ok) throw await responseError(response, `Suche fehlgeschlagen: ${response.status}`);
   return response.json() as Promise<SearchResponse>;
+}
+
+export async function fetchLlmStatus(): Promise<LlmStatusResponse> {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl('/api/v1/llm/status'));
+  } catch {
+    throw new Error('LLM-Status nicht erreichbar. Der LumOS Core läuft vermutlich nicht.');
+  }
+  if (!response.ok) throw new Error('LLM-Status konnte nicht geladen werden.');
+  return response.json() as Promise<LlmStatusResponse>;
+}
+
+export async function generateRagAnswer(query: string): Promise<RagAnswerResponse> {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl('/api/v1/answer'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, limit: 5 })
+    });
+  } catch {
+    throw new Error('Lokale KI-Antwort nicht erreichbar. Bitte prüfe, ob der LumOS Core läuft.');
+  }
+  if (response.status === 404 || response.status === 405) {
+    throw new Error('Lokale KI-Antwort ist im Backend nicht verfügbar.');
+  }
+  if (!response.ok) throw await responseError(response, 'Lokale KI-Antwort fehlgeschlagen.');
+  return response.json() as Promise<RagAnswerResponse>;
 }
 
 export async function checkSearchApi(): Promise<void> {
