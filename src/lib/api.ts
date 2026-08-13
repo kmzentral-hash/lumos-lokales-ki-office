@@ -16,6 +16,7 @@ export type DocumentItem = {
   status: 'stored' | 'processing' | 'ready' | 'failed' | 'unsupported';
   extracted_chars?: number;
   character_count?: number;
+  chunk_count: number;
   error_message: string | null;
   created_at: string;
   content?: string;
@@ -27,7 +28,9 @@ export type SearchResponse = { query: string; evidence_found: boolean; answer: s
 async function responseError(response: Response, fallback: string): Promise<Error> {
   try {
     const result = await response.json() as { detail?: string };
-    return new Error(result.detail || fallback);
+    const detail = result.detail || fallback;
+    if (/not found/i.test(detail)) return new Error('Die angefragte Funktion oder Ressource ist nicht erreichbar.');
+    return new Error(detail);
   } catch {
     return new Error(fallback);
   }
@@ -37,14 +40,24 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:876
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
 
 export async function fetchHealth(): Promise<HealthResponse> {
-  const response = await fetch(apiUrl('/api/v1/health'));
-  if (!response.ok) throw new Error(`Healthcheck fehlgeschlagen: ${response.status}`);
+  let response: Response;
+  try {
+    response = await fetch(apiUrl('/api/v1/health'));
+  } catch {
+    throw new Error('Backend nicht erreichbar. Bitte starte den LumOS Core.');
+  }
+  if (!response.ok) throw new Error('Backend nicht erreichbar. Der Healthcheck antwortet nicht erfolgreich.');
   return response.json() as Promise<HealthResponse>;
 }
 
 export async function fetchDocuments(): Promise<DocumentItem[]> {
-  const response = await fetch(apiUrl('/api/v1/documents'));
-  if (!response.ok) throw new Error(`Dokumentliste fehlgeschlagen: ${response.status}`);
+  let response: Response;
+  try {
+    response = await fetch(apiUrl('/api/v1/documents'));
+  } catch {
+    throw new Error('Backend nicht erreichbar. Die Dokumentliste konnte nicht geladen werden.');
+  }
+  if (!response.ok) throw new Error('Dokumentverwaltung nicht erreichbar.');
   const result = await response.json() as { documents: DocumentItem[] };
   return Array.from(
     new Map(result.documents.map((document) => [document.sha256, document])).values()
@@ -54,7 +67,12 @@ export async function fetchDocuments(): Promise<DocumentItem[]> {
 export async function uploadDocument(file: File): Promise<{ document: DocumentItem; duplicate: boolean }> {
   const body = new FormData();
   body.append('file', file);
-  const response = await fetch(apiUrl('/api/v1/documents'), { method: 'POST', body });
+  let response: Response;
+  try {
+    response = await fetch(apiUrl('/api/v1/documents'), { method: 'POST', body });
+  } catch {
+    throw new Error('Backend nicht erreichbar. Das Dokument wurde nicht importiert.');
+  }
   const result = await response.json() as { document: DocumentItem; duplicate: boolean; detail?: string };
   if (!response.ok) throw new Error(result.detail || `Import fehlgeschlagen: ${response.status}`);
   return result;

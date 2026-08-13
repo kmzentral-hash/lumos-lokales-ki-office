@@ -30,11 +30,13 @@ def test_import_and_list_document() -> None:
 
     document = next(item for item in listing.json()["documents"] if item["name"] == "wissen.txt")
     assert document["extracted_chars"] > 0
+    assert document["chunk_count"] > 0
     assert document["status"] == "ready"
 
     details = client.get(f"/api/v1/documents/{document['id']}")
     assert details.status_code == 200
     assert "LumOS Testwissen" in details.json()["document"]["content"]
+    assert details.json()["document"]["chunk_count"] > 0
 
 
 def test_duplicate_upload_is_counted_once() -> None:
@@ -131,6 +133,7 @@ def test_image_is_not_indexed_as_text() -> None:
     document = response.json()["document"]
     assert document["status"] == "unsupported"
     assert document["extracted_chars"] == 0
+    assert document["chunk_count"] == 0
     assert "OCR" in document["error_message"]
 
 
@@ -156,6 +159,7 @@ def test_txt_upload_to_search_integration() -> None:
     document = upload.json()["document"]
     assert document["status"] == "ready"
     assert document["character_count"] > 0
+    assert document["chunk_count"] > 0
 
     details = client.get(f"/api/v1/documents/{document['id']}")
     assert details.status_code == 200

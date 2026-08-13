@@ -1,6 +1,6 @@
 # LumOS – Lokales KI Office
 
-Entwicklungsstand 0.3.0 des lokalen, quellenbasierten KI-Arbeitszentrums von Studio M 360.
+Entwicklungsstand 0.4.0 des lokalen, quellenbasierten KI-Arbeitszentrums von Studio M 360.
 
 ## Aktueller Stand
 
@@ -10,6 +10,8 @@ Entwicklungsstand 0.3.0 des lokalen, quellenbasierten KI-Arbeitszentrums von Stu
 - lokaler Dokumentimport mit Typprüfung, 25-MB-Limit, SHA-256-Identität und SQLite-Metadaten
 - lokale Textextraktion für PDF, DOCX, TXT und Markdown
 - abschnittsweise Volltextsuche mit Dokument- und PDF-Seitenangaben
+- lokales Control Center mit Backend-, Such- und Dokumentstatus
+- Dokumentverwaltung mit Details, Neuverarbeitung, Zeichen- und Chunk-Zahlen
 - explizite Kein-Beleg-Antwort statt erfundener Inhalte
 - Loopback-Bindung und eingeschränkte CORS-Regel
 - automatisierter API-Test
@@ -18,6 +20,33 @@ Entwicklungsstand 0.3.0 des lokalen, quellenbasierten KI-Arbeitszentrums von Stu
 ## Lokal starten
 
 Voraussetzungen: Node.js 22+ und Python 3.12+ mit `uv`.
+
+Komfortstart unter Windows:
+
+```powershell
+.\start-lumos.bat
+```
+
+Selbstheilender Start mit Portpruefung, Dependency-Sync und API-Checks:
+
+```powershell
+.\heal-lumos.bat
+```
+
+Direkt per PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\heal-lumos.ps1 -Restart
+```
+
+Alternativ getrennt starten:
+
+```powershell
+.\start-backend.bat
+.\start-frontend.bat
+```
+
+Manueller Start:
 
 Terminal 1:
 
@@ -35,6 +64,8 @@ npm run dev
 ```
 
 Danach `http://127.0.0.1:1420` öffnen.
+
+Der Backend-Core läuft auf `http://127.0.0.1:8765`; die API-Dokumentation ist unter `http://127.0.0.1:8765/docs` erreichbar. Das Frontend zeigt "Core bereit" nur, wenn Healthcheck und `POST /api/v1/search` verfügbar sind.
 
 ## Prüfen
 

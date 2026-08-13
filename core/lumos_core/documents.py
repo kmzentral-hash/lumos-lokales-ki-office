@@ -100,7 +100,17 @@ def _valid_signature(extension: str, content: bytes) -> bool:
     return False
 
 
-def _as_dict(row: sqlite3.Row, include_content: bool = False) -> dict[str, object]:
+def _chunk_count(connection: sqlite3.Connection, document_id: str) -> int:
+    return int(
+        connection.execute(
+            "SELECT COUNT(*) FROM document_chunks WHERE document_id=?", (document_id,)
+        ).fetchone()[0]
+    )
+
+
+def _as_dict(
+    row: sqlite3.Row, connection: sqlite3.Connection, include_content: bool = False
+) -> dict[str, object]:
     result: dict[str, object] = {
         "id": row["id"],
         "name": row["name"],
@@ -111,6 +121,7 @@ def _as_dict(row: sqlite3.Row, include_content: bool = False) -> dict[str, objec
         "status": row["status"],
         "extracted_chars": row["extracted_chars"] or 0,
         "character_count": row["extracted_chars"] or 0,
+        "chunk_count": _chunk_count(connection, row["id"]),
         "error_message": row["error_message"],
         "created_at": row["created_at"],
     }
@@ -212,7 +223,8 @@ def _process_document(connection: sqlite3.Connection, row: sqlite3.Row) -> sqlit
 async def list_documents() -> dict[str, object]:
     with _connection() as connection:
         rows = connection.execute("SELECT * FROM documents ORDER BY created_at DESC").fetchall()
-    return {"documents": [_as_dict(row) for row in rows], "count": len(rows)}
+        documents = [_as_dict(row, connection) for row in rows]
+    return {"documents": documents, "count": len(rows)}
 
 
 @router.get("/{document_id}")
@@ -222,9 +234,10 @@ async def get_document(document_id: str) -> dict[str, object]:
             "SELECT * FROM documents WHERE id=?",
             (document_id,),
         ).fetchone()
+        document = _as_dict(row, connection, include_content=True) if row is not None else None
     if row is None:
         raise HTTPException(status_code=404, detail="Dokument wurde nicht gefunden.")
-    return {"document": _as_dict(row, include_content=True)}
+    return {"document": document}
 
 
 @router.post("/{document_id}/process")
@@ -234,7 +247,8 @@ async def reprocess_document(document_id: str) -> dict[str, object]:
         if row is None:
             raise HTTPException(status_code=404, detail="Dokument wurde nicht gefunden.")
         processed = _process_document(connection, row)
-    return {"document": _as_dict(processed)}
+        document = _as_dict(processed, connection)
+    return {"document": document}
 
 
 @router.delete("/{document_id}")
@@ -276,7 +290,7 @@ async def import_document(file: Annotated[UploadFile, File()]) -> dict[str, obje
         if existing:
             if existing["extension"] in TEXT_TYPES and not existing["extracted_text"]:
                 existing = _process_document(connection, existing)
-            return {"document": _as_dict(existing), "duplicate": True}
+            return {"document": _as_dict(existing, connection), "duplicate": True}
         document_id = str(uuid4())
         stored_name = f"{document_id}{extension}"
         DOCUMENT_DIR.mkdir(parents=True, exist_ok=True)
@@ -290,4 +304,5 @@ async def import_document(file: Annotated[UploadFile, File()]) -> dict[str, obje
         )
         row = connection.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()
         processed = _process_document(connection, row)
-    return {"document": _as_dict(processed), "duplicate": False}
+        document = _as_dict(processed, connection)
+    return {"document": document, "duplicate": False}

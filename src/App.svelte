@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHealth, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HealthResponse, type SearchResponse } from './lib/api';
   let health: HealthResponse | null = null;
+  let searchApiAvailable = false;
   let checking = true;
   let query = '';
   let activeItem = 'Start';
@@ -14,8 +15,30 @@
   let searchResult: SearchResponse | null = null;
   let importMessage = 'PDF, DOCX, TXT, Markdown und Bilder bis 25 MB';
   let message = 'Importiere ein Dokument und stelle anschließend eine Frage an deinen lokalen Wissensraum.';
+  let lastError = '';
+  $: readyDocuments = documents.filter((document) => document.status === 'ready').length;
+  $: failedDocuments = documents.filter((document) => document.status === 'failed' || document.status === 'unsupported').length;
+  $: latestDocumentError = documents.find((document) => document.error_message)?.error_message || '';
+  $: systemError = lastError || latestDocumentError || 'Keine aktuelle Fehlermeldung.';
+  $: coreReady = Boolean(health && searchApiAvailable);
   const navItems = ['Start', 'KI-Chat', 'Wissenszentrum', 'Dokumente', 'System'];
-  async function checkCore() { checking = true; try { const coreHealth = await fetchHealth(); await checkSearchApi(); health = coreHealth; } catch { health = null; } finally { checking = false; } }
+  async function checkCore() {
+    checking = true;
+    searchApiAvailable = false;
+    try {
+      const coreHealth = await fetchHealth();
+      await checkSearchApi();
+      health = coreHealth;
+      searchApiAvailable = true;
+      lastError = '';
+    } catch (error) {
+      health = null;
+      searchApiAvailable = false;
+      lastError = error instanceof Error ? error.message : 'Backend nicht erreichbar.';
+    } finally {
+      checking = false;
+    }
+  }
   async function submitQuery() {
     const value=query.trim(); if(!value)return;
     searching = true; searchResult = null;
@@ -24,10 +47,10 @@
       message = searchResult.evidence_found
         ? searchResult.answer || `${searchResult.count} belegte Fundstelle${searchResult.count===1?'':'n'} im lokalen Wissensraum gefunden.`
         : searchResult.answer || `Für „${value}“ wurde in den fertig verarbeiteten Dokumenten kein belastbarer Beleg gefunden.`;
-    } catch (error) { message = error instanceof Error ? error.message : 'Die lokale Suche ist fehlgeschlagen.'; }
+    } catch (error) { message = error instanceof Error ? error.message : 'Die lokale Suche ist fehlgeschlagen.'; lastError = message; }
     finally { searching = false; }
   }
-  async function loadDocuments() { try { documents = await fetchDocuments(); } catch (error) { documents = []; importMessage = error instanceof Error ? error.message : 'Dokumentliste konnte nicht geladen werden.'; } }
+  async function loadDocuments() { try { documents = await fetchDocuments(); lastError = ''; } catch (error) { documents = []; importMessage = error instanceof Error ? error.message : 'Dokumentliste konnte nicht geladen werden.'; lastError = importMessage; } }
   async function importFile(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
@@ -41,6 +64,7 @@
       await loadDocuments();
     } catch (error) {
       importMessage = error instanceof Error ? error.message : 'Der Import ist fehlgeschlagen.';
+      lastError = importMessage;
     } finally {
       importing = false;
       input.value = '';
@@ -56,13 +80,14 @@
       importMessage = `${item.name} wurde entfernt.`;
     } catch (error) {
       importMessage = error instanceof Error ? error.message : 'Das Dokument konnte nicht entfernt werden.';
+      lastError = importMessage;
     } finally {
       deletingId = null;
     }
   }
   async function openDocument(item: DocumentItem) {
     try { selectedDocument = await fetchDocument(item.id); }
-    catch (error) { importMessage = error instanceof Error ? error.message : 'Details konnten nicht geladen werden.'; }
+    catch (error) { importMessage = error instanceof Error ? error.message : 'Details konnten nicht geladen werden.'; lastError = importMessage; }
   }
   async function processDocument(item: DocumentItem) {
     if (processingId) return;
@@ -74,6 +99,7 @@
       importMessage = `${updated.name}: ${updated.status}.`;
     } catch (error) {
       importMessage = error instanceof Error ? error.message : 'Neuverarbeitung fehlgeschlagen.';
+      lastError = importMessage;
     } finally { processingId = null; }
   }
   const statusLabel = (status: DocumentItem['status']) => ({ stored: 'Gespeichert – Verarbeitung ausstehend', processing: 'In Verarbeitung', ready: 'Durchsuchbar', failed: 'Fehlgeschlagen', unsupported: 'Nicht unterstützt' })[status];
@@ -91,7 +117,7 @@
   <header>
     <button class="brand" on:click={() => activate('Start')}><img src="/lumos-icon.png" alt="LumOS Symbol"/><span><b>LumOS</b><small>LOKALES KI OFFICE</small></span></button>
     <nav aria-label="Hauptnavigation">{#each navItems as item}<button class:active={activeItem===item} on:click={() => activate(item)}>{item}</button>{/each}</nav>
-    <button class="launch" on:click={checkCore}>{health ? 'Core verbunden' : checking ? 'Prüfe Core' : 'Core starten'} <span>›</span></button>
+    <button class="launch" on:click={checkCore}>{coreReady ? 'Core bereit' : checking ? 'Prüfe Core' : 'Core prüfen'} <span>›</span></button>
   </header>
 
   <main>
@@ -105,6 +131,21 @@
         <div class="grid-lines"></div><div class="halo"></div>
         <img src="/lumos-logo.png" alt="LumOS Lokal KI Office Logo"/>
         <span class="float-tag tag-a">✓ 100 % lokal</span><span class="float-tag tag-b">◆ Human in Control</span>
+      </div>
+    </section>
+
+    <section class="control-center" id="system">
+      <div>
+        <p class="eyebrow">LOKALES CONTROL CENTER</p>
+        <h2>Systemstatus.<br/><span>Alles auf einen Blick.</span></h2>
+        <p>LumOS prüft Backend, Such-API und Dokumentindex getrennt. Erst fertig verarbeitete Dokumente zählen als RAG-bereit.</p>
+      </div>
+      <div class="status-grid">
+        <article class:online={health}><span>Backend</span><b>{health ? 'Erreichbar' : checking ? 'Prüfung läuft' : 'Nicht erreichbar'}</b><small>{health?.version ? `Version ${health.version}` : 'FastAPI Core auf 127.0.0.1:8765'}</small></article>
+        <article class:online={searchApiAvailable}><span>RAG-Suche</span><b>{searchApiAvailable ? 'Verfügbar' : 'Nicht verfügbar'}</b><small>POST /api/v1/search</small></article>
+        <article><span>Dokumente</span><b>{documents.length.toLocaleString('de-DE')}</b><small>lokal gespeichert</small></article>
+        <article class:online={readyDocuments > 0}><span>RAG-bereit</span><b>{readyDocuments.toLocaleString('de-DE')}</b><small>{failedDocuments.toLocaleString('de-DE')} mit Fehler oder nicht unterstützt</small></article>
+        <article class:error={systemError !== 'Keine aktuelle Fehlermeldung.'}><span>Letzte Meldung</span><b>{systemError}</b><small>{coreReady ? 'Core bereit' : 'Status bitte prüfen'}</small></article>
       </div>
     </section>
 
@@ -134,7 +175,7 @@
         {#if documents.length === 0}
           <div class="empty-state"><i>◇</i><h3>Noch kein Dokument</h3><p>Füge dein erstes freigegebenes Dokument hinzu. Alle Daten bleiben lokal.</p></div>
         {:else}
-          <div class="document-list">{#each documents as item}<article><b>{item.type}</b><div><h3>{item.name}</h3><p>{(Number(item.size) || 0)/1024 < 0.1 ? '0,0' : ((Number(item.size) || 0)/1024).toFixed(1)} KB · {(Number(item.character_count ?? item.extracted_chars) || 0).toLocaleString('de-DE')} Zeichen · {item.sha256?.slice(0,12) || '–'}…</p>{#if item.error_message}<small class="document-error">{item.error_message}</small>{/if}</div><div class="document-actions"><span class:failed={item.status === 'failed' || item.status === 'unsupported'}>{statusLabel(item.status)}</span><div><button type="button" on:click={() => openDocument(item)}>Details / Öffnen</button><button type="button" on:click={() => processDocument(item)} disabled={processingId === item.id}>{processingId === item.id ? 'Verarbeite …' : 'Neu verarbeiten'}</button><button class="danger" type="button" on:click={() => removeDocument(item)} disabled={deletingId === item.id}>{deletingId === item.id ? 'Entferne …' : 'Löschen'}</button></div></div></article>{/each}</div>
+          <div class="document-list">{#each documents as item}<article><b>{item.type}</b><div><h3>{item.name}</h3><p>{(Number(item.size) || 0)/1024 < 0.1 ? '0,0' : ((Number(item.size) || 0)/1024).toFixed(1)} KB · {(Number(item.character_count ?? item.extracted_chars) || 0).toLocaleString('de-DE')} Zeichen · {(Number(item.chunk_count) || 0).toLocaleString('de-DE')} Chunks · {item.sha256?.slice(0,12) || '–'}…</p>{#if item.status !== 'ready' && (Number(item.character_count ?? item.extracted_chars) || 0) === 0}<small class="document-warning">Noch nicht RAG-bereit: bitte neu verarbeiten oder Fehler prüfen.</small>{/if}{#if item.error_message}<small class="document-error">{item.error_message}</small>{/if}</div><div class="document-actions"><span class:failed={item.status === 'failed' || item.status === 'unsupported'}>{statusLabel(item.status)}</span><div><button type="button" on:click={() => openDocument(item)}>Details / Öffnen</button><button type="button" on:click={() => processDocument(item)} disabled={processingId === item.id}>{processingId === item.id ? 'Verarbeite …' : 'Neu verarbeiten'}</button><button class="danger" type="button" on:click={() => removeDocument(item)} disabled={deletingId === item.id}>{deletingId === item.id ? 'Entferne …' : 'Löschen'}</button></div></div></article>{/each}</div>
         {/if}
       </div>
     </section>
@@ -144,7 +185,7 @@
         <div class="document-modal-card" role="dialog" aria-modal="true" aria-label="Dokumentdetails" tabindex="-1">
           <button class="modal-close" aria-label="Schließen" on:click={() => selectedDocument = null}>×</button>
           <p class="eyebrow">DOKUMENTDETAILS</p><h2>{selectedDocument.name}</h2>
-          <dl><div><dt>Status</dt><dd>{statusLabel(selectedDocument.status)}</dd></div><div><dt>Größe</dt><dd>{((Number(selectedDocument.size) || 0)/1024).toFixed(1)} KB</dd></div><div><dt>Zeichen</dt><dd>{(Number(selectedDocument.character_count ?? selectedDocument.extracted_chars) || 0).toLocaleString('de-DE')}</dd></div><div><dt>SHA-256</dt><dd>{selectedDocument.sha256}</dd></div></dl>
+          <dl><div><dt>Status</dt><dd>{statusLabel(selectedDocument.status)}</dd></div><div><dt>Größe</dt><dd>{((Number(selectedDocument.size) || 0)/1024).toFixed(1)} KB</dd></div><div><dt>Zeichen</dt><dd>{(Number(selectedDocument.character_count ?? selectedDocument.extracted_chars) || 0).toLocaleString('de-DE')}</dd></div><div><dt>Chunks</dt><dd>{(Number(selectedDocument.chunk_count) || 0).toLocaleString('de-DE')}</dd></div><div><dt>SHA-256</dt><dd>{selectedDocument.sha256}</dd></div></dl>
           {#if selectedDocument.error_message}<p class="document-error">{selectedDocument.error_message}</p>{/if}
           <h3>Extrahierter Text</h3><pre>{selectedDocument.content || 'Kein extrahierter Text verfügbar.'}</pre>
         </div>
@@ -154,7 +195,7 @@
     <section class="workspace" id="chat">
       <div class="workspace-copy"><p class="eyebrow">BELEGTE LOKALE SUCHE</p><h2>Frag dein<br/><span>Wissen.</span></h2><p>LumOS durchsucht ausschließlich deine freigegebenen lokalen Dokumente und zeigt jede verwendete Fundstelle offen an.</p></div>
       <div class="chat-card">
-        <div class="chat-head"><span>LUMOS / KI-CHAT</span><span class="state"><i class:online={health}></i>{health?'CORE BEREIT':'CORE OFFLINE'}</span></div>
+        <div class="chat-head"><span>LUMOS / KI-CHAT</span><span class="state"><i class:online={coreReady}></i>{coreReady?'CORE BEREIT':'CORE OFFLINE'}</span></div>
         <form on:submit|preventDefault={submitQuery}><textarea bind:value={query} placeholder="Was möchtest du in deinen Dokumenten finden?"></textarea><button type="submit" disabled={searching}>{searching?'Suche läuft …':'Lokal suchen'} <span>›</span></button></form>
         <div class="answer"><b>L</b><p>{message}</p></div>
         {#if searchResult?.evidence_found}<div class="sources"><div class="sources-head">QUELLEN / {searchResult.count} FUNDSTELLEN</div>{#each searchResult.hits as hit, index}<article><b>[{index+1}]</b><div><h3>{hit.document_name}{hit.page ? ` · Seite ${hit.page}` : ` · ${hit.section}`} · Trefferwert {hit.score.toFixed(2)}</h3><p>{hit.excerpt}</p></div></article>{/each}</div>{/if}
@@ -163,7 +204,7 @@
 
     <section class="status-section">
       <p class="eyebrow">ENTWICKLUNGSSTATUS</p><h2>Die Basis steht.<br/><span>Jetzt wird LumOS intelligent.</span></h2>
-      <div class="steps"><div class="done"><b>01</b><span>Oberfläche</span><small>BEREIT</small></div><div class:done={health}><b>02</b><span>Lokaler Core</span><small>{health?'BEREIT':'PRÜFEN'}</small></div><div class="done"><b>03</b><span>Dokumentaufnahme</span><small>BEREIT</small></div><div class="done"><b>04</b><span>Textextraktion & Suche</span><small>BEREIT</small></div><div><b>05</b><span>Lokales KI-Modell</span><small>ALS NÄCHSTES</small></div></div>
+      <div class="steps"><div class="done"><b>01</b><span>Oberfläche</span><small>BEREIT</small></div><div class:done={coreReady}><b>02</b><span>Lokaler Core</span><small>{coreReady?'BEREIT':'PRÜFEN'}</small></div><div class:done={documents.length > 0}><b>03</b><span>Dokumentaufnahme</span><small>{documents.length > 0 ? 'AKTIV' : 'LEER'}</small></div><div class:done={readyDocuments > 0}><b>04</b><span>Textextraktion & Suche</span><small>{readyDocuments > 0 ? 'BEREIT' : 'WARTET'}</small></div><div><b>05</b><span>Lokales KI-Modell</span><small>ALS NÄCHSTES</small></div></div>
     </section>
   </main>
   <footer><div><b>LumOS</b><small>LOKAL KI OFFICE</small></div><span>Studio M 360 · Development & Consulting</span><span>LOCAL FIRST · OFFLINE FIRST</span></footer>
