@@ -199,3 +199,24 @@ def test_search_mode_still_returns_multiple_hits() -> None:
     body = response.json()
     assert body["evidence_found"] is True
     assert body["count"] >= 2
+
+
+def test_search_metadata_filter() -> None:
+    doc1 = client.post(
+        "/api/v1/documents",
+        files={"file": ("filter-a.txt", BytesIO(b"Hybrid RAG Metadaten-Test A"), "text/plain")},
+    ).json()["document"]
+    client.post(
+        "/api/v1/documents",
+        files={"file": ("filter-b.md", BytesIO(b"Hybrid RAG Metadaten-Test B"), "text/markdown")},
+    )
+
+    resp_doc = client.post("/api/v1/search", json={"query": "Hybrid RAG", "document_id": doc1["id"]})
+    assert resp_doc.status_code == 200
+    assert resp_doc.json()["count"] == 1
+    assert resp_doc.json()["hits"][0]["document_id"] == doc1["id"]
+
+    resp_type = client.post("/api/v1/search", json={"query": "Hybrid RAG", "file_type": "MD"})
+    assert resp_type.status_code == 200
+    assert all(hit["document_name"].endswith(".md") for hit in resp_type.json()["hits"])
+
