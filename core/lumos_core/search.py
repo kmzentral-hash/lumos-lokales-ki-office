@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from .documents import _connection
@@ -73,6 +73,9 @@ class RAGAnswerResponse(BaseModel):
 INSUFFICIENT_EVIDENCE = (
     "Die vorhandenen Dokumente enthalten dafuer keine ausreichenden Informationen."
 )
+ANSWER_MAX_SOURCES = 3
+ANSWER_RELATIVE_TOP_THRESHOLD = 0.65
+ANSWER_ABSOLUTE_MIN_SCORE = 2.0
 
 
 def _tokens(query: str) -> list[str]:
@@ -116,6 +119,22 @@ def _context_from_hits(hits: list[SearchHit]) -> str:
 
 def _answer_sources(hits: list[SearchHit]) -> list[RAGAnswerSource]:
     return [RAGAnswerSource(**hit.model_dump()) for hit in hits]
+
+
+def _filter_answer_hits(hits: list[SearchHit]) -> tuple[list[SearchHit], str | None]:
+    if not hits:
+        return [], None
+
+    top_score = max(hits[0].score, 0.0)
+    min_score = max(ANSWER_ABSOLUTE_MIN_SCORE, top_score * ANSWER_RELATIVE_TOP_THRESHOLD)
+    filtered = [hit for hit in hits if hit.score >= min_score][:ANSWER_MAX_SOURCES]
+
+    if len(filtered) < len(hits):
+        return (
+            filtered,
+            "Einige schwach relevante Fundstellen wurden fuer die lokale KI-Antwort ausgefiltert.",
+        )
+    return filtered, None
 
 
 @router.post("/api/v1/search", response_model=SearchResponse, name="search_documents")
@@ -171,6 +190,21 @@ async def search_documents(request: SearchRequest) -> SearchResponse:
     )
 
 
+@router.get("/api/v1/search", response_model=SearchResponse, name="search_documents_get")
+async def search_documents_get(
+    query: str | None = Query(default=None, min_length=2, max_length=500),
+    q: str | None = Query(default=None, min_length=2, max_length=500),
+    limit: int = Query(default=5, ge=1, le=12),
+) -> SearchResponse:
+    term = (query or q or "").strip()
+    if not term:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Query-Parameter 'query' oder 'q' wird benötigt.",
+        )
+    return await search_documents(SearchRequest(query=term, limit=limit))
+
+
 @router.get("/api/v1/llm/status", response_model=LLMStatusResponse, name="llm_status")
 async def llm_status() -> LLMStatusResponse:
     try:
@@ -191,7 +225,8 @@ async def llm_status() -> LLMStatusResponse:
 @router.post("/api/v1/answer", response_model=RAGAnswerResponse, name="rag_answer")
 async def rag_answer(request: SearchRequest) -> RAGAnswerResponse:
     search = await search_documents(SearchRequest(query=request.query, limit=request.limit))
-    sources = _answer_sources(search.hits)
+    filtered_hits, filter_warning = _filter_answer_hits(search.hits)
+    sources = _answer_sources(filtered_hits)
     if not search.evidence_found:
         return RAGAnswerResponse(
             answer=INSUFFICIENT_EVIDENCE,
@@ -200,6 +235,15 @@ async def rag_answer(request: SearchRequest) -> RAGAnswerResponse:
             grounded=False,
             insufficient_evidence=True,
             warning=None,
+        )
+    if not filtered_hits:
+        return RAGAnswerResponse(
+            answer=INSUFFICIENT_EVIDENCE,
+            sources=[],
+            model=None,
+            grounded=False,
+            insufficient_evidence=True,
+            warning=filter_warning,
         )
 
     try:
@@ -213,7 +257,7 @@ async def rag_answer(request: SearchRequest) -> RAGAnswerResponse:
                         "Frage:\n"
                         f"{request.query}\n\n"
                         "Verfuegbare Quellen:\n"
-                        f"{_context_from_hits(search.hits)}"
+                        f"{_context_from_hits(filtered_hits)}"
                     ),
                 },
             ]
@@ -226,7 +270,7 @@ async def rag_answer(request: SearchRequest) -> RAGAnswerResponse:
             model=provider.model,
             grounded=bool(answer != INSUFFICIENT_EVIDENCE and sources),
             insufficient_evidence=answer == INSUFFICIENT_EVIDENCE,
-            warning=None,
+            warning=filter_warning,
         )
     except LLMConfigurationError as exc:
         warning = exc.message
@@ -243,5 +287,5 @@ async def rag_answer(request: SearchRequest) -> RAGAnswerResponse:
         model=None,
         grounded=False,
         insufficient_evidence=False,
-        warning=warning,
+        warning=filter_warning or warning,
     )
