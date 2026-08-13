@@ -50,22 +50,33 @@
     }
   }
   async function submitQuery() {
-    const value=query.trim(); if(!value)return;
-    searching = true; searchResult = null; answerResult = null;
+    const value = query.trim();
+    if (!value) return;
+    searching = true;
+    searchResult = null;
+    answerResult = null;
     try {
       if (chatMode === 'answer') {
         answerResult = await generateRagAnswer(value);
-        message = answerResult.warning
-          ? `Lokale KI-Antwort nicht verfügbar: ${answerResult.warning}`
-          : answerResult.answer;
+        if (answerResult.llm_available === false) {
+          message = 'Die lokale KI ist aktuell nicht erreichbar. Die gefundenen Quellen bleiben unten sichtbar.';
+        } else if (answerResult.insufficient_evidence) {
+          message = 'Die vorhandenen Dokumente enthalten dafür keine ausreichenden Informationen.';
+        } else {
+          message = answerResult.answer;
+        }
       } else {
         searchResult = await searchDocuments(value);
         message = searchResult.evidence_found
-          ? searchResult.answer || `${searchResult.count} belegte Fundstelle${searchResult.count===1?'':'n'} im lokalen Wissensraum gefunden.`
-          : searchResult.answer || `Für „${value}“ wurde in den fertig verarbeiteten Dokumenten kein belastbarer Beleg gefunden.`;
+          ? `${searchResult.count} belegte Fundstelle${searchResult.count === 1 ? '' : 'n'} im lokalen Wissensraum gefunden.`
+          : `Für „${value}“ wurde in den fertig verarbeiteten Dokumenten kein belastbarer Beleg gefunden.`;
       }
-    } catch (error) { message = error instanceof Error ? error.message : 'Die lokale Suche ist fehlgeschlagen.'; lastError = message; }
-    finally { searching = false; }
+    } catch (error) {
+      message = error instanceof Error ? error.message : 'Die lokale Suche ist fehlgeschlagen.';
+      lastError = message;
+    } finally {
+      searching = false;
+    }
   }
   async function loadDocuments() { try { documents = await fetchDocuments(); lastError = ''; } catch (error) { documents = []; importMessage = error instanceof Error ? error.message : 'Dokumentliste konnte nicht geladen werden.'; lastError = importMessage; } }
   async function importFile(event: Event) {
@@ -222,11 +233,65 @@
           <textarea bind:value={query} placeholder={chatMode === 'answer' ? 'Welche quellengebundene Antwort soll LumOS lokal erzeugen?' : 'Was möchtest du in deinen Dokumenten finden?'}></textarea>
           <button type="submit" disabled={searching}>{searching ? chatMode === 'answer' ? 'Antwort entsteht …' : 'Suche läuft …' : chatMode === 'answer' ? 'Lokal beantworten' : 'Lokal suchen'} <span>›</span></button>
         </form>
-        <div class="answer"><b>L</b><p>{message}</p></div>
         {#if answerResult}
-          <div class="sources"><div class="sources-head">ANTWORTQUELLEN / {answerResult.sources.length} FUNDSTELLEN {answerResult.model ? `· ${answerResult.model}` : ''}</div>{#each answerResult.sources as hit, index}<article><b>[{index+1}]</b><div><h3>{hit.document_name}{hit.page ? ` · Seite ${hit.page}` : ` · ${hit.section}`} · Trefferwert {hit.score.toFixed(2)}</h3><p>{hit.excerpt}</p></div></article>{/each}</div>
+          {#if answerResult.llm_available === false || answerResult.warning}
+            <div class="llm-warning-card">
+              <b>⚠️ Lokale KI nicht erreichbar</b>
+              <p>{answerResult.warning || 'Die Quellen wurden gefunden, aber es konnte keine KI-Antwort erzeugt werden.'}</p>
+              <small>Hinweis: Bitte starte <code>start-llm.ps1</code> in der PowerShell, um das Sprachmodell (llama-server) bereitzustellen.</small>
+            </div>
+          {:else if answerResult.insufficient_evidence}
+            <div class="llm-info-card">
+              <b>ℹ️ Keine ausreichende Evidenz</b>
+              <p>Die vorhandenen Dokumente enthalten dafür keine ausreichenden Informationen.</p>
+            </div>
+          {:else if answerResult.answer}
+            <div class="answer-box">
+              <div class="answer-head">
+                <span>LOKALE KI-ANTWORT</span>
+                {#if answerResult.model}<small>Modell: {answerResult.model}</small>{/if}
+              </div>
+              <p>{answerResult.answer}</p>
+            </div>
+          {/if}
+          {#if answerResult.sources && answerResult.sources.length > 0}
+            <div class="sources">
+              <div class="sources-head">GEFUNDENE QUELLEN / {answerResult.sources.length} FUNDSTELLEN</div>
+              {#each answerResult.sources as hit, index}
+                <article>
+                  <b>[{index+1}]</b>
+                  <div>
+                    <h3>{hit.document_name} <small>{hit.page ? `· Seite ${hit.page}` : `· ${hit.section}`}</small></h3>
+                    <p>{hit.excerpt.length > 280 ? hit.excerpt.slice(0, 280) + '...' : hit.excerpt}</p>
+                    <span class="score-badge">Trefferwert {hit.score.toFixed(2)}</span>
+                  </div>
+                </article>
+              {/each}
+            </div>
+          {/if}
         {/if}
-        {#if searchResult?.evidence_found}<div class="sources"><div class="sources-head">QUELLEN / {searchResult.count} FUNDSTELLEN</div>{#each searchResult.hits as hit, index}<article><b>[{index+1}]</b><div><h3>{hit.document_name}{hit.page ? ` · Seite ${hit.page}` : ` · ${hit.section}`} · Trefferwert {hit.score.toFixed(2)}</h3><p>{hit.excerpt}</p></div></article>{/each}</div>{/if}
+        {#if searchResult}
+          {#if searchResult.evidence_found}
+            <div class="sources">
+              <div class="sources-head">GEFUNDENE QUELLEN / {searchResult.count} FUNDSTELLEN</div>
+              {#each searchResult.hits as hit, index}
+                <article>
+                  <b>[{index+1}]</b>
+                  <div>
+                    <h3>{hit.document_name} <small>{hit.page ? `· Seite ${hit.page}` : `· ${hit.section}`}</small></h3>
+                    <p>{hit.excerpt.length > 280 ? hit.excerpt.slice(0, 280) + '...' : hit.excerpt}</p>
+                    <span class="score-badge">Trefferwert {hit.score.toFixed(2)}</span>
+                  </div>
+                </article>
+              {/each}
+            </div>
+          {:else}
+            <div class="llm-info-card">
+              <b>Keine Fundstellen</b>
+              <p>Keine passende Fundstelle in fertig verarbeiteten Dokumenten gefunden.</p>
+            </div>
+          {/if}
+        {/if}
       </div>
     </section>
 

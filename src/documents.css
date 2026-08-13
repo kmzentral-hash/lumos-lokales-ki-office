@@ -32,3 +32,16 @@
 @media(max-width:560px){.document-center{padding:80px 20px}.document-list article{grid-template-columns:48px 1fr}.document-actions{grid-column:2;align-items:flex-start}.document-actions>div{justify-content:flex-start}.panel-head{gap:12px}.panel-head b{text-align:right}.document-modal dl{grid-template-columns:1fr}}
 .sources{border-top:1px solid #4098d72e;padding:0 25px 20px}.sources-head{padding:17px 0;color:#6ccfff;font-size:.65rem;font-weight:700;letter-spacing:.13em}.sources article{display:grid;grid-template-columns:36px 1fr;gap:10px;padding:14px 0;border-top:1px solid #4098d720}.sources article>b{color:var(--cyan);font-size:.75rem}.sources h3{margin:0 0 7px;color:#f4f8ff;font-size:.85rem}.sources p{margin:0;color:#9fb1c9;font-size:.78rem;line-height:1.55}.chat-card form button:disabled{opacity:.65;cursor:wait}
 .chat-mode{display:flex;flex-wrap:wrap;gap:8px}.chat-mode button{border:1px solid #48bfff66;border-radius:999px;background:transparent;color:#8bdcff;padding:8px 12px;font-size:.76rem;cursor:pointer}.chat-mode button.active{background:#168bd344;color:white;border-color:#70d8ff}
+.llm-warning-card{margin:15px 25px;padding:16px 20px;border:1px solid #ff765c88;border-radius:14px;background:#290d14;color:#ffb9ac;line-height:1.5;font-size:.85rem}
+.llm-warning-card b{display:block;margin-bottom:6px;color:#ff765c;font-size:.92rem}
+.llm-warning-card p{margin:0 0 8px;color:#ffd3ca}
+.llm-warning-card small{display:block;color:#ffa291;font-size:.78rem}
+.llm-warning-card code{background:#3d141e;padding:2px 6px;border-radius:4px;color:#fff}
+.llm-info-card{margin:15px 25px;padding:16px 20px;border:1px solid #48bfff55;border-radius:14px;background:#051b38;color:#9ec9e9;line-height:1.5;font-size:.85rem}
+.llm-info-card b{display:block;margin-bottom:6px;color:#70d8ff;font-size:.92rem}
+.llm-info-card p{margin:0;color:#c0e4ff}
+.answer-box{margin:15px 25px;padding:18px 22px;border:1px solid #0a8ce366;border-radius:16px;background:linear-gradient(145deg,#05224a,#041530);color:#f0f6ff}
+.answer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:.65rem;font-weight:700;letter-spacing:.12em;color:#6ccfff}
+.answer-head small{color:#9ec9e9;font-weight:400;letter-spacing:normal}
+.answer-box p{margin:0;line-height:1.65;font-size:.94rem;color:#e1eeff;white-space:pre-wrap}
+.score-badge{display:inline-block;margin-top:6px;padding:2px 8px;border-radius:6px;background:#093059;color:#7ed6ff;font-size:.7rem;font-weight:600}

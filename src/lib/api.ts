@@ -39,6 +39,7 @@ export type RagAnswerResponse = {
   model: string | null;
   grounded: boolean;
   insufficient_evidence: boolean;
+  llm_available?: boolean;
   warning: string | null;
 };
 
