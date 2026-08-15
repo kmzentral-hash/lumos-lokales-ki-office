@@ -11,7 +11,7 @@ def test_health_is_local_and_ready() -> None:
     body = response.json()
     assert body["status"] == "ok"
     assert body["local_only"] is True
-    assert body["version"] == "1.1.0"
+    assert body["version"] == "1.2.0"
     assert body["components"]["retrieval"] == "ready"
     assert body["components"]["search"] == "ready"
 

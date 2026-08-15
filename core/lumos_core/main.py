@@ -12,6 +12,7 @@ from .llm import LLMUnsafeBaseUrlError, provider_from_settings
 from .media import router as media_router
 from .search import router as search_router
 from .system import router as system_router
+from .tables import router as tables_router
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -68,6 +69,7 @@ app.include_router(search_router)
 app.include_router(export_router)
 app.include_router(system_router)
 app.include_router(media_router)
+app.include_router(tables_router)
 
 
 @app.get("/", include_in_schema=False)
@@ -114,6 +116,7 @@ async def health() -> dict[str, object]:
             "retrieval": "ready",
             "search": "ready",
             "system": "ready",
+            "tables": "ready",
         },
         "llm_details": {
             "configured": llm_configured,
