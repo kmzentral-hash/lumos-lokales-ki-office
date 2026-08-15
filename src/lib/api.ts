@@ -369,3 +369,61 @@ export async function fetchMediaList(): Promise<MediaListResponse> {
   if (!response.ok) throw new Error('Medienliste konnte nicht geladen werden.');
   return response.json() as Promise<MediaListResponse>;
 }
+
+export type TableInspectRequest = {
+  csv_content: string;
+  delimiter?: string;
+};
+
+export type ColumnSummary = {
+  name: string;
+  data_type: string;
+  min_value?: number | null;
+  max_value?: number | null;
+  sum_value?: number | null;
+  avg_value?: number | null;
+};
+
+export type TableInspectResponse = {
+  row_count: number;
+  column_count: number;
+  headers: string[];
+  columns: ColumnSummary[];
+  preview_rows: string[][];
+};
+
+export type TableAnalyzeRequest = {
+  csv_content: string;
+  target_column?: string | null;
+  operation?: string;
+};
+
+export type TableAnalyzeResponse = {
+  success: boolean;
+  operation: string;
+  target_column: string;
+  result_value: number;
+  formatted_result: string;
+  summary_html: string;
+  created_at: string;
+};
+
+export async function inspectTable(payload: TableInspectRequest): Promise<TableInspectResponse> {
+  const response = await fetch(apiUrl('/api/v1/tables/inspect'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw await responseError(response, 'Tabellen-Inspektion fehlgeschlagen.');
+  return response.json() as Promise<TableInspectResponse>;
+}
+
+export async function analyzeTable(payload: TableAnalyzeRequest): Promise<TableAnalyzeResponse> {
+  const response = await fetch(apiUrl('/api/v1/tables/analyze'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw await responseError(response, 'Tabellen-Kalkulation fehlgeschlagen.');
+  return response.json() as Promise<TableAnalyzeResponse>;
+}

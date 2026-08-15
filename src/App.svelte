@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHardwareInfo, fetchHealth, fetchLlmStatus, fetchMediaList, fetchModelScan, fetchSbom, generateLetterExport, generateLocalImage, generateLocalTts, generateRagAnswer, previewLetterExport, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HardwareInfoResponse, type HealthResponse, type ImageGenerateResponse, type LetterExportRequest, type LetterGenerateResponse, type LetterPreviewResponse, type LlmStatusResponse, type MediaListResponse, type ModelScanResponse, type RagAnswerResponse, type SbomResponse, type SearchResponse, type TtsGenerateResponse } from './lib/api';
+  import { analyzeTable, checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHardwareInfo, fetchHealth, fetchLlmStatus, fetchMediaList, fetchModelScan, fetchSbom, generateLetterExport, generateLocalImage, generateLocalTts, generateRagAnswer, inspectTable, previewLetterExport, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HardwareInfoResponse, type HealthResponse, type ImageGenerateResponse, type LetterExportRequest, type LetterGenerateResponse, type LetterPreviewResponse, type LlmStatusResponse, type MediaListResponse, type ModelScanResponse, type RagAnswerResponse, type SbomResponse, type SearchResponse, type TableAnalyzeResponse, type TableInspectResponse, type TtsGenerateResponse } from './lib/api';
   let health: HealthResponse | null = null;
   let llmStatus: LlmStatusResponse | null = null;
   let hardwareInfo: HardwareInfoResponse | null = null;
@@ -36,6 +36,45 @@
   let imageResult: ImageGenerateResponse | null = null;
   let ttsResult: TtsGenerateResponse | null = null;
   let mediaList: MediaListResponse | null = null;
+
+  let csvInput = "Produkt,Menge,Preis\nBürostuhl,5,149.00\nArbeitstisch,2,399.00\nMonitor,4,220.00\nTastatur,10,29.90";
+  let inspectingTable = false;
+  let analyzingTable = false;
+  let tableInspectResult: TableInspectResponse | null = null;
+  let tableAnalyzeResult: TableAnalyzeResponse | null = null;
+  let selectedOperation = 'sum';
+  let selectedTargetCol = 'Preis';
+
+  async function handleInspectTable() {
+    if (!csvInput.trim() || inspectingTable) return;
+    inspectingTable = true;
+    try {
+      tableInspectResult = await inspectTable({ csv_content: csvInput });
+      if (tableInspectResult.headers.length > 0 && !selectedTargetCol) {
+        selectedTargetCol = tableInspectResult.headers[tableInspectResult.headers.length - 1];
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Tabellen-Inspektion fehlgeschlagen.';
+    } finally {
+      inspectingTable = false;
+    }
+  }
+
+  async function handleAnalyzeTable() {
+    if (!csvInput.trim() || analyzingTable) return;
+    analyzingTable = true;
+    try {
+      tableAnalyzeResult = await analyzeTable({
+        csv_content: csvInput,
+        target_column: selectedTargetCol,
+        operation: selectedOperation
+      });
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Kalkulation fehlgeschlagen.';
+    } finally {
+      analyzingTable = false;
+    }
+  }
 
   async function handleGenerateImage() {
     if (!mediaPrompt.trim() || generatingImage) return;
@@ -528,6 +567,87 @@
                 </div>
               </article>
             {/each}
+          </div>
+        {/if}
+      </div>
+    </section>
+
+    <section class="document-center" id="tables">
+      <div class="document-intro">
+        <p class="eyebrow">TABELLEN & FINANZ-ANALYSE (GATE 7)</p>
+        <h2>Zahlen & Kalkulationen.<br/><span>Präzise auf deinem PC.</span></h2>
+        <p>Analysiere CSV- und Tabellendaten, berechne Summen, Mittelwerte und erstelle strukturierte Übersichten für Angebote und Berichte.</p>
+
+        <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+          <label style="font-size: 0.76rem; color: #9ec9e9; display: flex; flex-direction: column; gap: 4px;">
+            Tabellendaten (CSV / Semikolon / Komma)
+            <textarea bind:value={csvInput} style="background: #020a18; border: 1px solid #4098d744; border-radius: 8px; color: white; padding: 8px 12px; font: inherit; font-size: 0.82rem; min-height: 100px;"></textarea>
+          </label>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="export-button" on:click={handleInspectTable} disabled={inspectingTable}>
+              {inspectingTable ? 'Analysiere …' : '📊 Tabelle analysieren'}
+            </button>
+            <button type="button" class="export-button" on:click={handleAnalyzeTable} disabled={analyzingTable}>
+              {analyzingTable ? 'Rechne …' : '🧮 Kalkulation durchführen'}
+            </button>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-top: 5px;">
+            <label style="font-size: 0.75rem; color: #9ec9e9; flex: 1;">
+              Ziel-Spalte:
+              <input type="text" bind:value={selectedTargetCol} style="width: 100%; background: #020a18; border: 1px solid #4098d744; border-radius: 6px; color: white; padding: 4px 8px; margin-top: 2px;"/>
+            </label>
+            <label style="font-size: 0.75rem; color: #9ec9e9; flex: 1;">
+              Operation:
+              <select bind:value={selectedOperation} style="width: 100%; background: #020a18; border: 1px solid #4098d744; border-radius: 6px; color: white; padding: 4px 8px; margin-top: 2px;">
+                <option value="sum">Summe (SUM)</option>
+                <option value="avg">Durchschnitt (AVG)</option>
+                <option value="min">Minimum (MIN)</option>
+                <option value="max">Maximum (MAX)</option>
+                <option value="count">Anzahl (COUNT)</option>
+              </select>
+            </label>
+          </div>
+
+          {#if tableAnalyzeResult}
+            <div style="margin-top: 10px; padding: 14px; background: #052445; border: 1px solid #70d8ff88; border-radius: 12px; color: white;">
+              {@html tableAnalyzeResult.summary_html}
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <div class="document-panel">
+        <div class="panel-head">
+          <span>TABELLEN-VORSCHAU & SPALTEN</span>
+          <b>{tableInspectResult?.row_count || 0} ZEILEN</b>
+        </div>
+        {#if !tableInspectResult}
+          <div class="empty-state">
+            <i>◇</i>
+            <h3>Klicke "Tabelle analysieren"</h3>
+            <p>LumOS ermittelt Spalten, Datentypen, Min/Max und Summen-Statistiken.</p>
+          </div>
+        {:else}
+          <div style="padding: 15px; overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;">
+              <thead>
+                <tr style="border-bottom: 1px solid #4098d766; color: #70d8ff;">
+                  {#each tableInspectResult.headers as header}
+                    <th style="padding: 6px 10px;">{header}</th>
+                  {/each}
+                </tr>
+              </thead>
+              <tbody>
+                {#each tableInspectResult.preview_rows as row}
+                  <tr style="border-bottom: 1px solid #4098d722;">
+                    {#each row as cell}
+                      <td style="padding: 6px 10px; color: #e1eeff;">{cell}</td>
+                    {/each}
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           </div>
         {/if}
       </div>
