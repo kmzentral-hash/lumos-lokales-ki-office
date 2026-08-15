@@ -80,7 +80,7 @@ class LocalOpenAIProvider:
 
     @property
     def configured(self) -> bool:
-        return bool(self.model.strip())
+        return bool(self.base_url.strip())
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -99,10 +99,16 @@ class LocalOpenAIProvider:
                 generation_available=False,
                 last_error=LLMConfigurationError.message,
             )
+        active_model = self.model or "qwen2.5-7b-instruct-q4_k_m"
         try:
             async with self._http_client() as client:
                 response = await client.get(f"{self.base_url}/models", headers=self._headers())
                 response.raise_for_status()
+                data = response.json()
+                if isinstance(data, dict) and "data" in data and isinstance(data["data"], list) and data["data"]:
+                    first_model = data["data"][0].get("id") or data["data"][0].get("name")
+                    if first_model:
+                        active_model = first_model
         except httpx.TimeoutException:
             return self._failed_status(LLMTimeoutError.message)
         except httpx.HTTPError as exc:
@@ -110,7 +116,7 @@ class LocalOpenAIProvider:
         return LLMStatus(
             configured=True,
             base_url=self.base_url,
-            model=self.model,
+            model=active_model,
             loopback_only=True,
             reachable=True,
             generation_available=True,

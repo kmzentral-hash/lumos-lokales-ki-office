@@ -130,12 +130,7 @@ Write-Step "Backend starten"
 if (-not (Get-Listener $BackendPort)) {
     $BackendOut = Join-Path $LogDir "backend.out.log"
     $BackendErr = Join-Path $LogDir "backend.err.log"
-    Start-Process -FilePath "uv" `
-        -ArgumentList "run", "uvicorn", "lumos_core.main:app", "--host", "127.0.0.1", "--port", "$BackendPort" `
-        -WorkingDirectory $CoreRoot `
-        -RedirectStandardOutput $BackendOut `
-        -RedirectStandardError $BackendErr `
-        -WindowStyle Hidden
+    cmd.exe /c "start /MIN `"LumOS Backend`" /D `"$CoreRoot`" uv run uvicorn lumos_core.main:app --host 127.0.0.1 --port $BackendPort"
 }
 
 if (-not (Wait-HttpOk "$BackendUrl/api/v1/health" "Backend Healthcheck" 40)) {
@@ -179,12 +174,7 @@ Write-Step "Frontend starten"
 if (-not (Get-Listener $FrontendPort)) {
     $FrontendOut = Join-Path $LogDir "frontend.out.log"
     $FrontendErr = Join-Path $LogDir "frontend.err.log"
-    Start-Process -FilePath "npm.cmd" `
-        -ArgumentList "run", "dev" `
-        -WorkingDirectory $ProjectRoot `
-        -RedirectStandardOutput $FrontendOut `
-        -RedirectStandardError $FrontendErr `
-        -WindowStyle Hidden
+    cmd.exe /c "start /MIN `"LumOS Frontend`" /D `"$ProjectRoot`" npm run dev -- --host 127.0.0.1"
 }
 
 if (-not (Wait-HttpOk $FrontendUrl "Frontend" 40)) {

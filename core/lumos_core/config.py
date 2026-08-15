@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8765
     llm_base_url: str = "http://127.0.0.1:8080/v1"
-    llm_model: str = ""
+    llm_model: str = "qwen2.5-7b-instruct-q4_k_m"
     llm_timeout_seconds: float = 30.0
     llm_api_key: str = ""
 
