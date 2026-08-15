@@ -1,8 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHealth, fetchLlmStatus, generateLetterExport, generateRagAnswer, previewLetterExport, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HealthResponse, type LetterExportRequest, type LetterGenerateResponse, type LetterPreviewResponse, type LlmStatusResponse, type RagAnswerResponse, type SearchResponse } from './lib/api';
+  import { checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHardwareInfo, fetchHealth, fetchLlmStatus, fetchModelScan, fetchSbom, generateLetterExport, generateRagAnswer, previewLetterExport, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HardwareInfoResponse, type HealthResponse, type LetterExportRequest, type LetterGenerateResponse, type LetterPreviewResponse, type LlmStatusResponse, type ModelScanResponse, type RagAnswerResponse, type SbomResponse, type SearchResponse } from './lib/api';
   let health: HealthResponse | null = null;
   let llmStatus: LlmStatusResponse | null = null;
+  let hardwareInfo: HardwareInfoResponse | null = null;
+  let modelScan: ModelScanResponse | null = null;
+  let sbomInfo: SbomResponse | null = null;
+  let showSbomModal = false;
   let searchApiAvailable = false;
   let checking = true;
   let query = '';
@@ -87,12 +91,18 @@
       const coreHealth = await fetchHealth();
       await checkSearchApi();
       llmStatus = await fetchLlmStatus();
+      hardwareInfo = await fetchHardwareInfo().catch(() => null);
+      modelScan = await fetchModelScan().catch(() => null);
+      sbomInfo = await fetchSbom().catch(() => null);
       health = coreHealth;
       searchApiAvailable = true;
       lastError = '';
     } catch (error) {
       health = null;
       llmStatus = null;
+      hardwareInfo = null;
+      modelScan = null;
+      sbomInfo = null;
       searchApiAvailable = false;
       lastError = error instanceof Error ? error.message : 'Backend nicht erreichbar.';
     } finally {
@@ -410,9 +420,105 @@
       </div>
     </section>
 
+    <section class="document-center" id="system">
+      <div class="document-intro">
+        <p class="eyebrow">SYSTEM & HARDWARE-ASSISTENT</p>
+        <h2>Lokale Leistung.<br/><span>Transparent geprüft.</span></h2>
+        <p>LumOS analysiert deine Hardware und Modelle auf Konformität mit der Sicherheits-Allowlist (ADR-009 / Security Policy).</p>
+
+        {#if hardwareInfo}
+          <div style="margin-top: 15px; padding: 16px; background: #041b38; border: 1px solid #4098d744; border-radius: 14px; font-size: 0.82rem;">
+            <b>🖥️ System: {hardwareInfo.os_name}</b>
+            <p style="margin: 4px 0 0; color: #9ec9e9;">RAM: {hardwareInfo.memory_total_gb} GB Gesamt ({hardwareInfo.memory_available_gb} GB frei)</p>
+            <p style="margin: 2px 0 0; color: #9ec9e9;">CPU: {hardwareInfo.cpu_cores_logical} logische Kerne</p>
+            <p style="margin: 2px 0 0; color: #7ed6ff;">GPU: {hardwareInfo.gpu_name || 'Standard-Grafikeinheit'}</p>
+            <p style="margin: 2px 0 0; color: #8cff00;">Beschleunigung: {hardwareInfo.gpu_acceleration}</p>
+            <small style="display: block; margin-top: 8px; color: #c0e4ff;">Empfohlenes Modellprofil: {hardwareInfo.recommended_profile}</small>
+          </div>
+        {/if}
+
+        <button type="button" class="export-button" style="margin-top: 15px;" on:click={() => showSbomModal = true}>
+          📄 SBOM & Lizenz-Inventar anzeigen
+        </button>
+      </div>
+
+      <div class="document-panel">
+        <div class="panel-head">
+          <span>MODELL-ALLOWLIST & VERZEICHNIS (`models/`)</span>
+          <b>{modelScan?.count || 0} MODELL(E)</b>
+        </div>
+        {#if !modelScan || modelScan.installed_models.length === 0}
+          <div class="empty-state">
+            <i>◇</i>
+            <h3>Keine GGUF-Dateien in `models/`</h3>
+            <p>Lege ein geprüftes GGUF-Modell (z. B. `Qwen2.5-7B-Instruct-GGUF`) im Unterordner `models/` ab.</p>
+          </div>
+        {:else}
+          <div class="document-list">
+            {#each modelScan.installed_models as model}
+              <article>
+                <b>GGUF</b>
+                <div>
+                  <h3>{model.name}</h3>
+                  <p>{model.size_mb} MB · {model.path}</p>
+                  <small style="color: {model.allowlist_status === 'candidate' ? '#ffe066' : model.allowlist_status === 'approved' ? '#8cff00' : '#ff765c'}">
+                    Status Allowlist: <b>{model.allowlist_status.toUpperCase()}</b>
+                  </small>
+                </div>
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </section>
+
+    {#if showSbomModal && sbomInfo}
+      <div class="document-modal">
+        <div class="export-modal-card" role="dialog" aria-modal="true" aria-label="Software Bill of Materials" tabindex="-1">
+          <button class="modal-close" aria-label="Schließen" on:click={() => showSbomModal = false}>×</button>
+          <p class="eyebrow">SOFTWARE BILL OF MATERIALS (ADR-009 / LIZENZINVENTAR)</p>
+          <h2>{sbomInfo.app_name} v{sbomInfo.version} - SBOM</h2>
+          <p style="color: #9ec9e9;">Stand: {sbomInfo.updated_at} · Maschinenlesbar gespeichert unter `docs/licenses/sbom.json`</p>
+
+          <div style="margin-top: 20px; overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;">
+              <thead>
+                <tr style="border-bottom: 1px solid #4098d766; color: #70d8ff;">
+                  <th style="padding: 8px;">Komponente</th>
+                  <th style="padding: 8px;">Version</th>
+                  <th style="padding: 8px;">Lizenz</th>
+                  <th style="padding: 8px;">Zweck</th>
+                  <th style="padding: 8px;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each sbomInfo.components as comp}
+                  <tr style="border-bottom: 1px solid #4098d722;">
+                    <td style="padding: 8px; font-weight: bold;">{comp.name}</td>
+                    <td style="padding: 8px; color: #c0e4ff;">{comp.version}</td>
+                    <td style="padding: 8px; color: #8bdcff;">{comp.license}</td>
+                    <td style="padding: 8px; color: #9ec9e9;">{comp.purpose}</td>
+                    <td style="padding: 8px;">
+                      <span style="padding: 2px 6px; border-radius: 4px; background: {comp.status === 'approved' ? '#0d3810' : comp.status === 'candidate' ? '#3d3408' : '#3d141e'}; color: {comp.status === 'approved' ? '#8cff00' : comp.status === 'candidate' ? '#ffe066' : '#ff765c'}; font-size: 0.72rem; font-weight: bold;">
+                        {comp.status.toUpperCase()}
+                      </span>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="export-actions">
+            <button type="button" class="confirm" on:click={() => showSbomModal = false}>Schließen</button>
+          </div>
+        </div>
+      </div>
+    {/if}
+
     <section class="status-section">
       <p class="eyebrow">ENTWICKLUNGSSTATUS</p><h2>Die Basis steht.<br/><span>Jetzt wird LumOS intelligent.</span></h2>
-      <div class="steps"><div class="done"><b>01</b><span>Oberfläche</span><small>BEREIT</small></div><div class:done={coreReady}><b>02</b><span>Lokaler Core</span><small>{coreReady?'BEREIT':'PRÜFEN'}</small></div><div class:done={documents.length > 0}><b>03</b><span>Dokumentaufnahme</span><small>{documents.length > 0 ? 'AKTIV' : 'LEER'}</small></div><div class:done={readyDocuments > 0}><b>04</b><span>Textextraktion & Suche</span><small>{readyDocuments > 0 ? 'BEREIT' : 'WARTET'}</small></div><div><b>05</b><span>Lokales KI-Modell</span><small>ALS NÄCHSTES</small></div></div>
+      <div class="steps"><div class="done"><b>01</b><span>Oberfläche</span><small>BEREIT</small></div><div class:done={coreReady}><b>02</b><span>Lokaler Core</span><small>{coreReady?'BEREIT':'PRÜFEN'}</small></div><div class:done={documents.length > 0}><b>03</b><span>Dokumentaufnahme</span><small>{documents.length > 0 ? 'AKTIV' : 'LEER'}</small></div><div class:done={readyDocuments > 0}><b>04</b><span>Textextraktion & Suche</span><small>{readyDocuments > 0 ? 'BEREIT' : 'WARTET'}</small></div><div class:done={coreReady && readyDocuments > 0}><b>05</b><span>Lokales KI-Modell & Export</span><small>{readyDocuments > 0 ? 'BEREIT' : 'ALS NÄCHSTES'}</small></div></div>
     </section>
   </main>
   <footer><div><b>LumOS</b><small>LOKAL KI OFFICE</small></div><span>Studio M 360 · Development & Consulting</span><span>LOCAL FIRST · OFFLINE FIRST</span></footer>

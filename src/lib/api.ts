@@ -233,3 +233,62 @@ export async function generateLetterExport(payload: LetterExportRequest): Promis
   if (!response.ok) throw await responseError(response, 'Geschäftsbrief-Export fehlgeschlagen.');
   return response.json() as Promise<LetterGenerateResponse>;
 }
+
+export type HardwareInfoResponse = {
+  os_name: string;
+  os_version: string;
+  cpu_cores_logical: number;
+  memory_total_gb: number;
+  memory_available_gb: number;
+  gpu_name: string | null;
+  gpu_acceleration: string;
+  recommended_profile: string;
+  status: string;
+};
+
+export type ModelItem = {
+  name: string;
+  filename: string;
+  path: string;
+  size_mb: number;
+  allowlist_status: string;
+};
+
+export type ModelScanResponse = {
+  models_dir: string;
+  installed_models: ModelItem[];
+  count: number;
+};
+
+export type SbomComponent = {
+  name: string;
+  version: string;
+  license: string;
+  purpose: string;
+  status: string;
+};
+
+export type SbomResponse = {
+  app_name: string;
+  version: string;
+  updated_at: string;
+  components: SbomComponent[];
+};
+
+export async function fetchHardwareInfo(): Promise<HardwareInfoResponse> {
+  const response = await fetch(apiUrl('/api/v1/system/hardware'));
+  if (!response.ok) throw new Error('Hardware-Informationen konnten nicht geladen werden.');
+  return response.json() as Promise<HardwareInfoResponse>;
+}
+
+export async function fetchModelScan(): Promise<ModelScanResponse> {
+  const response = await fetch(apiUrl('/api/v1/system/models'));
+  if (!response.ok) throw new Error('Modell-Verzeichnis konnte nicht gescannt werden.');
+  return response.json() as Promise<ModelScanResponse>;
+}
+
+export async function fetchSbom(): Promise<SbomResponse> {
+  const response = await fetch(apiUrl('/api/v1/system/sbom'));
+  if (!response.ok) throw new Error('SBOM konnte nicht abgerufen werden.');
+  return response.json() as Promise<SbomResponse>;
+}
