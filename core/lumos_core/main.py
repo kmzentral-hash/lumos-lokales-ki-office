@@ -9,6 +9,7 @@ from .config import settings
 from .documents import router as documents_router
 from .export import router as export_router
 from .llm import LLMUnsafeBaseUrlError, provider_from_settings
+from .media import router as media_router
 from .search import router as search_router
 from .system import router as system_router
 
@@ -66,6 +67,7 @@ app.include_router(documents_router)
 app.include_router(search_router)
 app.include_router(export_router)
 app.include_router(system_router)
+app.include_router(media_router)
 
 
 @app.get("/", include_in_schema=False)
@@ -108,6 +110,7 @@ async def health() -> dict[str, object]:
             "documents": "ready",
             "export": "ready",
             "llm": llm_state,
+            "media": "ready",
             "retrieval": "ready",
             "search": "ready",
             "system": "ready",
