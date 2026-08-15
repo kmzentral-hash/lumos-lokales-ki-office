@@ -1,11 +1,11 @@
 {
   "app_name": "LumOS Core",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "updated_at": "2026-08-15",
   "components": [
     {
       "name": "LumOS Core (FastAPI)",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "license": "MIT / Commercial Open-Source",
       "purpose": "Office Core Backend & Security Supervisor",
       "status": "approved"
