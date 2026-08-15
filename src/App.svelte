@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHardwareInfo, fetchHealth, fetchLlmStatus, fetchModelScan, fetchSbom, generateLetterExport, generateRagAnswer, previewLetterExport, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HardwareInfoResponse, type HealthResponse, type LetterExportRequest, type LetterGenerateResponse, type LetterPreviewResponse, type LlmStatusResponse, type ModelScanResponse, type RagAnswerResponse, type SbomResponse, type SearchResponse } from './lib/api';
+  import { checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHardwareInfo, fetchHealth, fetchLlmStatus, fetchMediaList, fetchModelScan, fetchSbom, generateLetterExport, generateLocalImage, generateLocalTts, generateRagAnswer, previewLetterExport, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HardwareInfoResponse, type HealthResponse, type ImageGenerateResponse, type LetterExportRequest, type LetterGenerateResponse, type LetterPreviewResponse, type LlmStatusResponse, type MediaListResponse, type ModelScanResponse, type RagAnswerResponse, type SbomResponse, type SearchResponse, type TtsGenerateResponse } from './lib/api';
   let health: HealthResponse | null = null;
   let llmStatus: LlmStatusResponse | null = null;
   let hardwareInfo: HardwareInfoResponse | null = null;
@@ -28,6 +28,49 @@
   let exportingLetter = false;
   let exportResult: LetterGenerateResponse | null = null;
   let previewResult: LetterPreviewResponse | null = null;
+
+  let mediaPrompt = 'Modernes Firmenlogo und Grafik für Geschäftsbrief';
+  let ttsText = 'Willkommen bei LumOS Lokal Office. Deine Daten bleiben lokal auf deinem PC.';
+  let generatingImage = false;
+  let generatingTts = false;
+  let imageResult: ImageGenerateResponse | null = null;
+  let ttsResult: TtsGenerateResponse | null = null;
+  let mediaList: MediaListResponse | null = null;
+
+  async function handleGenerateImage() {
+    if (!mediaPrompt.trim() || generatingImage) return;
+    generatingImage = true;
+    try {
+      imageResult = await generateLocalImage({ prompt: mediaPrompt });
+      await loadMediaList();
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Bildgenerierung fehlgeschlagen.';
+    } finally {
+      generatingImage = false;
+    }
+  }
+
+  async function handleGenerateTts(textToSpeak?: string) {
+    const text = textToSpeak || ttsText;
+    if (!text.trim() || generatingTts) return;
+    generatingTts = true;
+    try {
+      ttsResult = await generateLocalTts({ text });
+      await loadMediaList();
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Sprachsynthese fehlgeschlagen.';
+    } finally {
+      generatingTts = false;
+    }
+  }
+
+  async function loadMediaList() {
+    try {
+      mediaList = await fetchMediaList();
+    } catch {
+      mediaList = null;
+    }
+  }
 
   let exportForm: LetterExportRequest = {
     sender_name: 'Studio M 360 GmbH',
@@ -83,7 +126,7 @@
   $: systemError = lastError || latestDocumentError || 'Keine aktuelle Fehlermeldung.';
   $: coreReady = Boolean(health && searchApiAvailable);
   $: llmReady = Boolean(llmStatus?.generation_available);
-  const navItems = ['Start', 'KI-Chat', 'Wissenszentrum', 'Dokumente', 'System'];
+  const navItems = ['Start', 'KI-Chat', 'Wissenszentrum', 'Medien & Grafik', 'Dokumente', 'System'];
   async function checkCore() {
     checking = true;
     searchApiAvailable = false;
@@ -94,6 +137,7 @@
       hardwareInfo = await fetchHardwareInfo().catch(() => null);
       modelScan = await fetchModelScan().catch(() => null);
       sbomInfo = await fetchSbom().catch(() => null);
+      await loadMediaList();
       health = coreHealth;
       searchApiAvailable = true;
       lastError = '';
@@ -103,6 +147,7 @@
       hardwareInfo = null;
       modelScan = null;
       sbomInfo = null;
+      mediaList = null;
       searchApiAvailable = false;
       lastError = error instanceof Error ? error.message : 'Backend nicht erreichbar.';
     } finally {
@@ -377,6 +422,7 @@
               </div>
               <p>{answerResult.answer}</p>
               <button type="button" class="export-button" on:click={() => openExportModal(answerResult?.answer)}>✉️ Als Geschäftsbrief exportieren (DOCX + PDF)</button>
+              <button type="button" class="export-button" style="margin-left: 8px;" on:click={() => handleGenerateTts(answerResult?.answer)} disabled={generatingTts}>{generatingTts ? 'Erzeuge Audio …' : '🔊 Vorlesen (TTS)'}</button>
             </div>
           {/if}
           {#if answerResult.sources && answerResult.sources.length > 0}
@@ -416,6 +462,73 @@
               <p>Keine passende Fundstelle in fertig verarbeiteten Dokumenten gefunden.</p>
             </div>
           {/if}
+        {/if}
+      </div>
+    </section>
+
+    <section class="document-center" id="media">
+      <div class="document-intro">
+        <p class="eyebrow">LOKALE MEDIENGENERATION (GATE 6)</p>
+        <h2>Bilder & Sprache.<br/><span>Rechtssicher auf deinem PC.</span></h2>
+        <p>Erzeuge Produktbilder, Illustrationen und Sprachsynthese (TTS) lokal ohne Cloud-Dienste – 100 % kommerziell frei nutzbar (Apache-2.0 / MIT).</p>
+
+        <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+          <label style="font-size: 0.76rem; color: #9ec9e9; display: flex; flex-direction: column; gap: 4px;">
+            Bild-Beschreibung (Prompt)
+            <input type="text" bind:value={mediaPrompt} style="background: #020a18; border: 1px solid #4098d744; border-radius: 8px; color: white; padding: 8px 12px; font: inherit; font-size: 0.82rem;"/>
+          </label>
+          <button type="button" class="export-button" on:click={handleGenerateImage} disabled={generatingImage}>
+            {generatingImage ? 'Generiere Bild …' : '🖼️ Bild erzeugen (Apache-2.0)'}
+          </button>
+
+          {#if imageResult}
+            <div style="margin-top: 10px; padding: 12px; background: #041b38; border: 1px solid #4098d744; border-radius: 12px;">
+              <b style="color: #70d8ff; font-size: 0.82rem;">✓ Bild erzeugt: {imageResult.filename}</b>
+              <p style="margin: 4px 0; font-size: 0.75rem; color: #9ec9e9;">Provider: {imageResult.provider} ({imageResult.width}x{imageResult.height})</p>
+              <small style="color: #8cff00; font-size: 0.72rem;">Lizenz: {imageResult.license_status}</small>
+            </div>
+          {/if}
+
+          <label style="margin-top: 10px; font-size: 0.76rem; color: #9ec9e9; display: flex; flex-direction: column; gap: 4px;">
+            Sprachsynthese Text (TTS)
+            <textarea bind:value={ttsText} style="background: #020a18; border: 1px solid #4098d744; border-radius: 8px; color: white; padding: 8px 12px; font: inherit; font-size: 0.82rem; min-height: 70px;"></textarea>
+          </label>
+          <button type="button" class="export-button" on:click={() => handleGenerateTts()} disabled={generatingTts}>
+            {generatingTts ? 'Erzeuge Audio …' : '🔊 Vorlese-Audio erzeugen (Piper TTS)'}
+          </button>
+
+          {#if ttsResult}
+            <div style="margin-top: 10px; padding: 12px; background: #041b38; border: 1px solid #4098d744; border-radius: 12px;">
+              <b style="color: #70d8ff; font-size: 0.82rem;">✓ Audio erzeugt: {ttsResult.filename}</b>
+              <p style="margin: 4px 0; font-size: 0.75rem; color: #9ec9e9;">Dauer: {ttsResult.duration_seconds} Sekunden · Stimmsynthese: {ttsResult.voice}</p>
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <div class="document-panel">
+        <div class="panel-head">
+          <span>GENERIERTE MEDIEN (`core/data/media/`)</span>
+          <b>{mediaList?.count || 0} DATEI(EN)</b>
+        </div>
+        {#if !mediaList || mediaList.items.length === 0}
+          <div class="empty-state">
+            <i>◇</i>
+            <h3>Noch keine Medien generiert</h3>
+            <p>Erstelle dein erstes lokales Bild oder eine Vorlese-Audiodatei.</p>
+          </div>
+        {:else}
+          <div class="document-list">
+            {#each mediaList.items as item}
+              <article>
+                <b>{item.type.toUpperCase()}</b>
+                <div>
+                  <h3>{item.filename}</h3>
+                  <p>{(item.size_bytes / 1024).toFixed(1)} KB · {item.path}</p>
+                </div>
+              </article>
+            {/each}
+          </div>
         {/if}
       </div>
     </section>

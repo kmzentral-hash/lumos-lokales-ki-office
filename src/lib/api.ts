@@ -292,3 +292,80 @@ export async function fetchSbom(): Promise<SbomResponse> {
   if (!response.ok) throw new Error('SBOM konnte nicht abgerufen werden.');
   return response.json() as Promise<SbomResponse>;
 }
+
+export type ImageGenerateRequest = {
+  prompt: string;
+  negative_prompt?: string | null;
+  width?: number;
+  height?: number;
+  style?: string;
+  custom_filename?: string | null;
+};
+
+export type ImageGenerateResponse = {
+  success: boolean;
+  image_path: string;
+  filename: string;
+  width: number;
+  height: number;
+  provider: string;
+  license_status: string;
+  created_at: string;
+};
+
+export type TtsGenerateRequest = {
+  text: string;
+  voice?: string;
+  speed?: number;
+  custom_filename?: string | null;
+};
+
+export type TtsGenerateResponse = {
+  success: boolean;
+  audio_path: string;
+  filename: string;
+  duration_seconds: number;
+  provider: string;
+  voice: string;
+  created_at: string;
+};
+
+export type MediaItem = {
+  filename: string;
+  path: string;
+  type: string;
+  size_bytes: number;
+  created_at: string;
+};
+
+export type MediaListResponse = {
+  media_dir: string;
+  items: MediaItem[];
+  count: number;
+};
+
+export async function generateLocalImage(payload: ImageGenerateRequest): Promise<ImageGenerateResponse> {
+  const response = await fetch(apiUrl('/api/v1/media/image/generate'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw await responseError(response, 'Bildgenerierung fehlgeschlagen.');
+  return response.json() as Promise<ImageGenerateResponse>;
+}
+
+export async function generateLocalTts(payload: TtsGenerateRequest): Promise<TtsGenerateResponse> {
+  const response = await fetch(apiUrl('/api/v1/media/tts/generate'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw await responseError(response, 'Sprachsynthese fehlgeschlagen.');
+  return response.json() as Promise<TtsGenerateResponse>;
+}
+
+export async function fetchMediaList(): Promise<MediaListResponse> {
+  const response = await fetch(apiUrl('/api/v1/media/list'));
+  if (!response.ok) throw new Error('Medienliste konnte nicht geladen werden.');
+  return response.json() as Promise<MediaListResponse>;
+}
