@@ -10,6 +10,7 @@ from .documents import router as documents_router
 from .export import router as export_router
 from .installer import router as installer_router
 from .llm import LLMUnsafeBaseUrlError, provider_from_settings
+from .mail_calendar import router as mail_calendar_router
 from .media import router as media_router
 from .search import router as search_router
 from .system import router as system_router
@@ -72,6 +73,7 @@ app.include_router(system_router)
 app.include_router(media_router)
 app.include_router(tables_router)
 app.include_router(installer_router)
+app.include_router(mail_calendar_router)
 
 
 @app.get("/", include_in_schema=False)
@@ -115,6 +117,7 @@ async def health() -> dict[str, object]:
             "export": "ready",
             "installer": "ready",
             "llm": llm_state,
+            "mail_calendar": "ready",
             "media": "ready",
             "retrieval": "ready",
             "search": "ready",
