@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "LumOS Core"
-    version: str = "1.2.0"
+    version: str = "1.3.0"
     host: str = "127.0.0.1"
     port: int = 8765
     llm_base_url: str = "http://127.0.0.1:8080/v1"
