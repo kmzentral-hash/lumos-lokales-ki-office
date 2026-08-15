@@ -461,3 +461,58 @@ export async function buildInstallerManifest(): Promise<InstallerManifestRespons
   if (!response.ok) throw new Error('Installer Manifest konnte nicht erstellt werden.');
   return response.json() as Promise<InstallerManifestResponse>;
 }
+
+export type EmailDraftRequest = {
+  recipient_email?: string;
+  subject: string;
+  body_text: string;
+  sender_name?: string;
+};
+
+export type EmailDraftResponse = {
+  success: boolean;
+  subject: string;
+  recipient_email: string;
+  mailto_url: string;
+  eml_file_path: string;
+  filename: string;
+  created_at: string;
+};
+
+export type CalendarDraftRequest = {
+  title: string;
+  location?: string;
+  description?: string;
+  start_time_iso?: string;
+  duration_minutes?: number;
+  attendee_email?: string;
+};
+
+export type CalendarDraftResponse = {
+  success: boolean;
+  title: string;
+  ics_file_path: string;
+  filename: string;
+  start_time: string;
+  created_at: string;
+};
+
+export async function createEmailDraft(payload: EmailDraftRequest): Promise<EmailDraftResponse> {
+  const response = await fetch(apiUrl('/api/v1/mail-calendar/email/draft'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw await responseError(response, 'E-Mail Entwurf konnte nicht erstellt werden.');
+  return response.json() as Promise<EmailDraftResponse>;
+}
+
+export async function createCalendarDraft(payload: CalendarDraftRequest): Promise<CalendarDraftResponse> {
+  const response = await fetch(apiUrl('/api/v1/mail-calendar/calendar/draft'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw await responseError(response, 'Kalender Entwurf konnte nicht erstellt werden.');
+  return response.json() as Promise<CalendarDraftResponse>;
+}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { analyzeTable, buildInstallerManifest, checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHardwareInfo, fetchHealth, fetchInstallerPreflight, fetchLlmStatus, fetchMediaList, fetchModelScan, fetchSbom, generateLetterExport, generateLocalImage, generateLocalTts, generateRagAnswer, inspectTable, previewLetterExport, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HardwareInfoResponse, type HealthResponse, type ImageGenerateResponse, type InstallerManifestResponse, type LetterExportRequest, type LetterGenerateResponse, type LetterPreviewResponse, type LlmStatusResponse, type MediaListResponse, type ModelScanResponse, type PreflightCheckResponse, type RagAnswerResponse, type SbomResponse, type SearchResponse, type TableAnalyzeResponse, type TableInspectResponse, type TtsGenerateResponse } from './lib/api';
+  import { analyzeTable, buildInstallerManifest, checkSearchApi, createCalendarDraft, createEmailDraft, deleteDocument, fetchDocument, fetchDocuments, fetchHardwareInfo, fetchHealth, fetchInstallerPreflight, fetchLlmStatus, fetchMediaList, fetchModelScan, fetchSbom, generateLetterExport, generateLocalImage, generateLocalTts, generateRagAnswer, inspectTable, previewLetterExport, reprocessDocument, searchDocuments, uploadDocument, type CalendarDraftResponse, type DocumentItem, type EmailDraftResponse, type HardwareInfoResponse, type HealthResponse, type ImageGenerateResponse, type InstallerManifestResponse, type LetterExportRequest, type LetterGenerateResponse, type LetterPreviewResponse, type LlmStatusResponse, type MediaListResponse, type ModelScanResponse, type PreflightCheckResponse, type RagAnswerResponse, type SbomResponse, type SearchResponse, type TableAnalyzeResponse, type TableInspectResponse, type TtsGenerateResponse } from './lib/api';
   let health: HealthResponse | null = null;
   let llmStatus: LlmStatusResponse | null = null;
   let hardwareInfo: HardwareInfoResponse | null = null;
@@ -12,6 +12,47 @@
   let showSbomModal = false;
   let searchApiAvailable = false;
   let checking = true;
+
+  let emailSubject = 'LumOS Lokal Office – Zusammenfassung & Angebot';
+  let emailBody = 'Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie die gewünschten Informationen.';
+  let emailRecipient = 'kunde@beispiel.de';
+  let emailResult: EmailDraftResponse | null = null;
+  let creatingEmail = false;
+
+  let calendarTitle = 'LumOS Abstimmung & Präsentation';
+  let calendarStartTime = '2026-08-20T10:00:00Z';
+  let calendarResult: CalendarDraftResponse | null = null;
+  let creatingCalendar = false;
+
+  async function handleCreateEmail(customBody?: string) {
+    creatingEmail = true;
+    try {
+      emailResult = await createEmailDraft({
+        recipient_email: emailRecipient,
+        subject: emailSubject,
+        body_text: customBody || emailBody
+      });
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'E-Mail Entwurf fehlgeschlagen.';
+    } finally {
+      creatingEmail = false;
+    }
+  }
+
+  async function handleCreateCalendar() {
+    creatingCalendar = true;
+    try {
+      calendarResult = await createCalendarDraft({
+        title: calendarTitle,
+        start_time_iso: calendarStartTime,
+        attendee_email: emailRecipient
+      });
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Kalender Entwurf fehlgeschlagen.';
+    } finally {
+      creatingCalendar = false;
+    }
+  }
 
   async function handleBuildInstaller() {
     buildingInstaller = true;
@@ -179,7 +220,7 @@
   $: systemError = lastError || latestDocumentError || 'Keine aktuelle Fehlermeldung.';
   $: coreReady = Boolean(health && searchApiAvailable);
   $: llmReady = Boolean(llmStatus?.generation_available);
-  const navItems = ['Start', 'KI-Chat', 'Wissenszentrum', 'Medien & Grafik', 'Dokumente', 'System'];
+  const navItems = ['Start', 'KI-Chat', 'Wissenszentrum', 'Medien & Grafik', 'Tabellen & Kalkulation', 'E-Mail & Kalender', 'Dokumente', 'System'];
   async function checkCore() {
     checking = true;
     searchApiAvailable = false;
@@ -478,6 +519,7 @@
               <p>{answerResult.answer}</p>
               <button type="button" class="export-button" on:click={() => openExportModal(answerResult?.answer)}>✉️ Als Geschäftsbrief exportieren (DOCX + PDF)</button>
               <button type="button" class="export-button" style="margin-left: 8px;" on:click={() => handleGenerateTts(answerResult?.answer)} disabled={generatingTts}>{generatingTts ? 'Erzeuge Audio …' : '🔊 Vorlesen (TTS)'}</button>
+              <button type="button" class="export-button" style="margin-left: 8px;" on:click={() => handleCreateEmail(answerResult?.answer)} disabled={creatingEmail}>{creatingEmail ? 'Erstelle E-Mail …' : '📧 E-Mail Entwurf (.eml)'}</button>
             </div>
           {/if}
           {#if answerResult.sources && answerResult.sources.length > 0}
@@ -666,6 +708,74 @@
             </table>
           </div>
         {/if}
+      </div>
+    </section>
+
+    <section class="document-center" id="mail-calendar">
+      <div class="document-intro">
+        <p class="eyebrow">E-MAIL & KALENDER-ORCHESTRIERUNG (GATE 9)</p>
+        <h2>Anschreiben & Termine.<br/><span>Kontrolliert vorbereitet.</span></h2>
+        <p>Erstelle professionelle E-Mail-Entwürfe (.eml) und iCalendar-Einladungen (.ics) für Outlook, Thunderbird & Windows Kalender ohne Cloud-Zwang.</p>
+
+        <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+          <label style="font-size: 0.76rem; color: #9ec9e9; display: flex; flex-direction: column; gap: 4px;">
+            Empfänger-Adresse
+            <input type="email" bind:value={emailRecipient} style="background: #020a18; border: 1px solid #4098d744; border-radius: 8px; color: white; padding: 8px 12px; font: inherit; font-size: 0.82rem;"/>
+          </label>
+          <label style="font-size: 0.76rem; color: #9ec9e9; display: flex; flex-direction: column; gap: 4px;">
+            E-Mail Betreff
+            <input type="text" bind:value={emailSubject} style="background: #020a18; border: 1px solid #4098d744; border-radius: 8px; color: white; padding: 8px 12px; font: inherit; font-size: 0.82rem;"/>
+          </label>
+          <label style="font-size: 0.76rem; color: #9ec9e9; display: flex; flex-direction: column; gap: 4px;">
+            E-Mail Inhalt
+            <textarea bind:value={emailBody} style="background: #020a18; border: 1px solid #4098d744; border-radius: 8px; color: white; padding: 8px 12px; font: inherit; font-size: 0.82rem; min-height: 80px;"></textarea>
+          </label>
+          <button type="button" class="export-button" on:click={() => handleCreateEmail()} disabled={creatingEmail}>
+            {creatingEmail ? 'Erstelle Entwurf …' : '📧 E-Mail Entwurf (.eml + mailto) erzeugen'}
+          </button>
+
+          {#if emailResult}
+            <div style="margin-top: 10px; padding: 12px; background: #041b38; border: 1px solid #4098d744; border-radius: 12px;">
+              <b style="color: #70d8ff; font-size: 0.82rem;">✓ E-Mail Entwurf erstellt: {emailResult.filename}</b>
+              <p style="margin: 4px 0; font-size: 0.75rem; color: #9ec9e9;">Empfänger: {emailResult.recipient_email}</p>
+              <a href={emailResult.mailto_url} target="_blank" style="color: #8cff00; font-size: 0.75rem; text-decoration: underline;">Im E-Mail Programm öffnen (mailto:)</a>
+            </div>
+          {/if}
+
+          <div style="margin-top: 15px; border-top: 1px solid #4098d733; padding-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+            <b style="color: #70d8ff; font-size: 0.84rem;">📅 Termineinladung (iCalendar .ics)</b>
+            <label style="font-size: 0.76rem; color: #9ec9e9; display: flex; flex-direction: column; gap: 4px;">
+              Termintitel
+              <input type="text" bind:value={calendarTitle} style="background: #020a18; border: 1px solid #4098d744; border-radius: 8px; color: white; padding: 8px 12px; font: inherit; font-size: 0.82rem;"/>
+            </label>
+            <label style="font-size: 0.76rem; color: #9ec9e9; display: flex; flex-direction: column; gap: 4px;">
+              Startzeitpunkt (ISO)
+              <input type="text" bind:value={calendarStartTime} style="background: #020a18; border: 1px solid #4098d744; border-radius: 8px; color: white; padding: 8px 12px; font: inherit; font-size: 0.82rem;"/>
+            </label>
+            <button type="button" class="export-button" on:click={handleCreateCalendar} disabled={creatingCalendar}>
+              {creatingCalendar ? 'Erstelle Termin …' : '📅 iCalendar Datei (.ics) erzeugen'}
+            </button>
+
+            {#if calendarResult}
+              <div style="margin-top: 10px; padding: 12px; background: #041b38; border: 1px solid #4098d744; border-radius: 12px;">
+                <b style="color: #70d8ff; font-size: 0.82rem;">✓ Termineinladung erstellt: {calendarResult.filename}</b>
+                <p style="margin: 4px 0; font-size: 0.75rem; color: #9ec9e9;">Titel: {calendarResult.title} ({calendarResult.start_time})</p>
+              </div>
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <div class="document-panel">
+        <div class="panel-head">
+          <span>ENTWURFS-ÜBERSICHT & STANDARD</span>
+          <b>LOKAL SAVED</b>
+        </div>
+        <div class="empty-state">
+          <i>✉</i>
+          <h3>E-Mail & Kalender Vorlagen</h3>
+          <p>Erstelle aus belegten KI-Antworten mit 1 Klick ein passendes E-Mail-Anschreiben oder eine Meeting-Einladung.</p>
+        </div>
       </div>
     </section>
 
