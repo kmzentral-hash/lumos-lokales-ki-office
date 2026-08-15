@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 
 from .config import settings
 from .documents import router as documents_router
+from .export import router as export_router
 from .llm import LLMUnsafeBaseUrlError, provider_from_settings
 from .search import router as search_router
 
@@ -62,6 +63,7 @@ app.add_middleware(
 )
 app.include_router(documents_router)
 app.include_router(search_router)
+app.include_router(export_router)
 
 
 @app.get("/", include_in_schema=False)
@@ -102,6 +104,7 @@ async def health() -> dict[str, object]:
         "components": {
             "database": "ready",
             "documents": "ready",
+            "export": "ready",
             "llm": llm_state,
             "retrieval": "ready",
             "search": "ready",
