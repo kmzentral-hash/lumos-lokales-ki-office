@@ -1,0 +1,49 @@
+{
+  "app_name": "LumOS Core",
+  "version": "0.5.0",
+  "updated_at": "2026-08-15",
+  "components": [
+    {
+      "name": "LumOS Core (FastAPI)",
+      "version": "0.5.0",
+      "license": "MIT / Commercial Open-Source",
+      "purpose": "Office Core Backend & Security Supervisor",
+      "status": "approved"
+    },
+    {
+      "name": "Svelte + Vite Desktop UI",
+      "version": "5.0.0",
+      "license": "MIT",
+      "purpose": "Floating AI Desktop User Interface",
+      "status": "approved"
+    },
+    {
+      "name": "llama-server (llama.cpp)",
+      "version": "b10375",
+      "license": "MIT",
+      "purpose": "Lokale GGUF LLM Inference Engine",
+      "status": "quarantine"
+    },
+    {
+      "name": "Qwen2.5-7B-Instruct-GGUF",
+      "version": "Q4_K_M",
+      "license": "Qwen Research / Apache 2.0",
+      "purpose": "Beleggestützte lokale Textgenerierung",
+      "status": "candidate"
+    },
+    {
+      "name": "python-docx & reportlab",
+      "version": "1.1 / 4.5",
+      "license": "MIT / BSD",
+      "purpose": "DIN 5008 Geschäftsbrief DOCX & PDF Export",
+      "status": "approved"
+    },
+    {
+      "name": "SQLite Database",
+      "version": "3.x",
+      "license": "Public Domain",
+      "purpose": "Autoritative lokale Daten- und Dokumentspeicherung",
+      "status": "approved"
+    }
+  ]
+}
