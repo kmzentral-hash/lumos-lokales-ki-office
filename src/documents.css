@@ -45,3 +45,26 @@
 .answer-head small{color:#9ec9e9;font-weight:400;letter-spacing:normal}
 .answer-box p{margin:0;line-height:1.65;font-size:.94rem;color:#e1eeff;white-space:pre-wrap}
 .score-badge{display:inline-block;margin-top:6px;padding:2px 8px;border-radius:6px;background:#093059;color:#7ed6ff;font-size:.7rem;font-weight:600}
+.export-button{margin-top:12px;border:1px solid #4de3ff66;border-radius:999px;background:#052445;color:#6ce0ff;padding:8px 16px;font-size:.78rem;font-weight:600;cursor:pointer}
+.export-button:hover{background:#0a3a6b;color:white}
+.export-modal-card{width:min(940px,95vw);max-height:90vh;overflow:auto;padding:30px;background:#05152e;border:1px solid #48bfff66;border-radius:24px;color:white}
+.export-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:18px}
+.export-form{display:flex;flex-direction:column;gap:12px}
+.export-form label{font-size:.75rem;color:#9ec9e9;display:flex;flex-direction:column;gap:4px}
+.export-form input,.export-form textarea{background:#020a18;border:1px solid #4098d744;border-radius:8px;color:white;padding:8px 12px;font:inherit;font-size:.82rem}
+.export-form textarea{min-height:110px;resize:vertical}
+.preview-panel{background:#020919;border:1px solid #4098d733;border-radius:14px;padding:20px;max-height:500px;overflow:auto}
+.letter-preview-box{font-family:Arial,sans-serif;color:#111;background:white;padding:24px;border-radius:8px;font-size:.82rem;line-height:1.45}
+.preview-sender{font-size:.68rem;color:#666;border-bottom:1px solid #ccc;padding-bottom:4px;margin-bottom:14px}
+.preview-recipient{margin-bottom:20px;line-height:1.4}
+.preview-meta{text-align:right;font-size:.75rem;color:#555;margin-bottom:16px}
+.preview-subject{font-weight:bold;font-size:.95rem;margin-bottom:12px}
+.preview-salutation{margin-bottom:10px}
+.preview-body p{margin:0 0 10px;color:#222;line-height:1.5}
+.preview-closing{margin-top:20px}
+.approval-box{margin-top:16px;padding:14px 18px;border:1px solid #8cff0066;border-radius:12px;background:#0d2806;color:#d8ffab;font-size:.8rem}
+.approval-box label{display:flex;align-items:center;gap:10px;cursor:pointer}
+.export-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:20px}
+.export-actions button.confirm{background:var(--lime);color:#06101d;border:0;padding:12px 22px;border-radius:999px;font-weight:700;cursor:pointer}
+.export-actions button.confirm:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:800px){.export-grid{grid-template-columns:1fr}}

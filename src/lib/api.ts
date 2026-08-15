@@ -174,3 +174,62 @@ export async function checkSearchApi(): Promise<void> {
   });
   if (!response.ok) throw new Error(`Suchdienst nicht bereit: ${response.status}`);
 }
+
+export type LetterExportRequest = {
+  sender_name?: string;
+  sender_address?: string;
+  recipient_name?: string;
+  recipient_company?: string | null;
+  recipient_address?: string;
+  date?: string | null;
+  subject?: string;
+  reference?: string | null;
+  salutation?: string;
+  body_text?: string;
+  closing?: string;
+  signoff_name?: string;
+  export_formats?: string[];
+  custom_filename?: string | null;
+  human_approved?: boolean;
+};
+
+export type LetterPreviewResponse = {
+  formatted_preview_html: string;
+  sender: string;
+  recipient: string;
+  subject: string;
+  date: string;
+  body_paragraphs: string[];
+  word_count: number;
+  character_count: number;
+};
+
+export type LetterGenerateResponse = {
+  success: boolean;
+  docx_path: string | null;
+  pdf_path: string | null;
+  export_dir: string;
+  filename_base: string;
+  human_approved: boolean;
+  created_at: string;
+};
+
+export async function previewLetterExport(payload: LetterExportRequest): Promise<LetterPreviewResponse> {
+  const response = await fetch(apiUrl('/api/v1/export/letter/preview'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw await responseError(response, 'Brief-Vorschau konnte nicht erzeugt werden.');
+  return response.json() as Promise<LetterPreviewResponse>;
+}
+
+export async function generateLetterExport(payload: LetterExportRequest): Promise<LetterGenerateResponse> {
+  const response = await fetch(apiUrl('/api/v1/export/letter/generate'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, human_approved: true })
+  });
+  if (!response.ok) throw await responseError(response, 'Geschäftsbrief-Export fehlgeschlagen.');
+  return response.json() as Promise<LetterGenerateResponse>;
+}

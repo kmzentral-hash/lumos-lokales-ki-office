@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHealth, fetchLlmStatus, generateRagAnswer, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HealthResponse, type LlmStatusResponse, type RagAnswerResponse, type SearchResponse } from './lib/api';
+  import { checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHealth, fetchLlmStatus, generateLetterExport, generateRagAnswer, previewLetterExport, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HealthResponse, type LetterExportRequest, type LetterGenerateResponse, type LetterPreviewResponse, type LlmStatusResponse, type RagAnswerResponse, type SearchResponse } from './lib/api';
   let health: HealthResponse | null = null;
   let llmStatus: LlmStatusResponse | null = null;
   let searchApiAvailable = false;
@@ -19,6 +19,56 @@
   let importMessage = 'PDF, DOCX, TXT, Markdown und Bilder bis 25 MB';
   let message = 'Importiere ein Dokument und stelle anschließend eine Frage an deinen lokalen Wissensraum.';
   let lastError = '';
+  let showExportModal = false;
+  let exportApproved = false;
+  let exportingLetter = false;
+  let exportResult: LetterGenerateResponse | null = null;
+  let previewResult: LetterPreviewResponse | null = null;
+
+  let exportForm: LetterExportRequest = {
+    sender_name: 'Studio M 360 GmbH',
+    sender_address: 'Musterstraße 12, 10115 Berlin',
+    recipient_name: 'Max Mustermann',
+    recipient_company: 'Musterfirma AG',
+    recipient_address: 'Hauptstraße 45, 80331 München',
+    subject: 'Ihr Angebot und Informationen zum Projekt',
+    reference: 'Ref-Nr. LumOS-2026-0815',
+    salutation: 'Sehr geehrte Damen und Herren,',
+    body_text: 'vielen Dank für Ihre Anfrage. Anbei erhalten Sie die gewünschten Informationen.',
+    closing: 'Mit freundlichen Grüßen',
+    signoff_name: 'Ihr LumOS Team',
+    custom_filename: 'geschaeftsbrief_angebot'
+  };
+
+  async function updatePreview() {
+    try {
+      previewResult = await previewLetterExport(exportForm);
+    } catch {
+      previewResult = null;
+    }
+  }
+
+  async function openExportModal(text?: string) {
+    if (text) {
+      exportForm.body_text = text;
+    }
+    showExportModal = true;
+    exportApproved = false;
+    exportResult = null;
+    await updatePreview();
+  }
+
+  async function executeExport() {
+    if (!exportApproved || exportingLetter) return;
+    exportingLetter = true;
+    try {
+      exportResult = await generateLetterExport(exportForm);
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : 'Export fehlgeschlagen.';
+    } finally {
+      exportingLetter = false;
+    }
+  }
   const formatNumber = (value: unknown) => {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric.toLocaleString('de-DE') : '0';
@@ -221,6 +271,70 @@
       </div>
     {/if}
 
+    {#if showExportModal}
+      <div class="document-modal">
+        <div class="export-modal-card" role="dialog" aria-modal="true" aria-label="Geschäftsbrief Export" tabindex="-1">
+          <button class="modal-close" aria-label="Schließen" on:click={() => showExportModal = false}>×</button>
+          <p class="eyebrow">ACTION PREVIEW & HUMAN APPROVAL</p>
+          <h2>Geschäftsbrief erzeugen</h2>
+          <p>Prüfe und bearbeite die Pflichtfelder vor der Freigabe. LumOS erzeugt daraus saubere DOCX- und PDF-Dateien.</p>
+
+          <div class="export-grid">
+            <div class="export-form">
+              <label>Absender Name <input bind:value={exportForm.sender_name} on:input={updatePreview}/></label>
+              <label>Absender Adresse <input bind:value={exportForm.sender_address} on:input={updatePreview}/></label>
+              <label>Empfänger Name <input bind:value={exportForm.recipient_name} on:input={updatePreview}/></label>
+              <label>Empfänger Firma <input bind:value={exportForm.recipient_company} on:input={updatePreview}/></label>
+              <label>Empfänger Adresse <input bind:value={exportForm.recipient_address} on:input={updatePreview}/></label>
+              <label>Betreff <input bind:value={exportForm.subject} on:input={updatePreview}/></label>
+              <label>Bezugszeichen <input bind:value={exportForm.reference} on:input={updatePreview}/></label>
+              <label>Anrede <input bind:value={exportForm.salutation} on:input={updatePreview}/></label>
+              <label>Brieftext <textarea bind:value={exportForm.body_text} on:input={updatePreview}></textarea></label>
+              <label>Grußformel <input bind:value={exportForm.closing} on:input={updatePreview}/></label>
+              <label>Unterzeichner <input bind:value={exportForm.signoff_name} on:input={updatePreview}/></label>
+              <label>Dateiname <input bind:value={exportForm.custom_filename}/></label>
+            </div>
+
+            <div class="preview-panel">
+              <p class="eyebrow">VISUELLE VORSCHAU (DIN 5008)</p>
+              {#if previewResult}
+                <div class="letter-preview-box">
+                  {@html previewResult.formatted_preview_html}
+                </div>
+                <small style="color: #9ec9e9; display: block; margin-top: 10px;">
+                  Umfang: {previewResult.word_count} Wörter · {previewResult.character_count} Zeichen
+                </small>
+              {:else}
+                <p>Vorschau wird geladen …</p>
+              {/if}
+            </div>
+          </div>
+
+          <div class="approval-box">
+            <label>
+              <input type="checkbox" bind:checked={exportApproved}/>
+              <b>Ich habe den Geschäftsbrief geprüft und gebe die Erzeugung als DOCX & PDF im lokalen Export-Ordner frei (Human in Control).</b>
+            </label>
+          </div>
+
+          {#if exportResult}
+            <div style="margin-top: 15px; padding: 15px; background: #0c3311; border: 1px solid #8cff0066; border-radius: 12px; color: #d8ffab;">
+              <b>✓ Geschäftsbrief erfolgreich freigegeben & gespeichert!</b>
+              {#if exportResult.docx_path}<p style="margin: 5px 0 0; font-size: 0.8rem;">DOCX: {exportResult.docx_path}</p>{/if}
+              {#if exportResult.pdf_path}<p style="margin: 3px 0 0; font-size: 0.8rem;">PDF: {exportResult.pdf_path}</p>{/if}
+            </div>
+          {/if}
+
+          <div class="export-actions">
+            <button type="button" class="ghost" on:click={() => showExportModal = false}>Abbrechen</button>
+            <button type="button" class="confirm" disabled={!exportApproved || exportingLetter} on:click={executeExport}>
+              {exportingLetter ? 'Erzeuge Dateien …' : 'Freigeben & DOCX + PDF speichern'}
+            </button>
+          </div>
+        </div>
+      </div>
+    {/if}
+
     <section class="workspace" id="chat">
       <div class="workspace-copy"><p class="eyebrow">BELEGTE LOKALE SUCHE</p><h2>Frag dein<br/><span>Wissen.</span></h2><p>LumOS durchsucht ausschließlich deine freigegebenen lokalen Dokumente und zeigt jede verwendete Fundstelle offen an.</p></div>
       <div class="chat-card">
@@ -252,6 +366,7 @@
                 {#if answerResult.model}<small>Modell: {answerResult.model}</small>{/if}
               </div>
               <p>{answerResult.answer}</p>
+              <button type="button" class="export-button" on:click={() => openExportModal(answerResult?.answer)}>✉️ Als Geschäftsbrief exportieren (DOCX + PDF)</button>
             </div>
           {/if}
           {#if answerResult.sources && answerResult.sources.length > 0}
