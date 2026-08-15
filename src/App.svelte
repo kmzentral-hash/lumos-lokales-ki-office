@@ -1,14 +1,28 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { analyzeTable, checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHardwareInfo, fetchHealth, fetchLlmStatus, fetchMediaList, fetchModelScan, fetchSbom, generateLetterExport, generateLocalImage, generateLocalTts, generateRagAnswer, inspectTable, previewLetterExport, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HardwareInfoResponse, type HealthResponse, type ImageGenerateResponse, type LetterExportRequest, type LetterGenerateResponse, type LetterPreviewResponse, type LlmStatusResponse, type MediaListResponse, type ModelScanResponse, type RagAnswerResponse, type SbomResponse, type SearchResponse, type TableAnalyzeResponse, type TableInspectResponse, type TtsGenerateResponse } from './lib/api';
+  import { analyzeTable, buildInstallerManifest, checkSearchApi, deleteDocument, fetchDocument, fetchDocuments, fetchHardwareInfo, fetchHealth, fetchInstallerPreflight, fetchLlmStatus, fetchMediaList, fetchModelScan, fetchSbom, generateLetterExport, generateLocalImage, generateLocalTts, generateRagAnswer, inspectTable, previewLetterExport, reprocessDocument, searchDocuments, uploadDocument, type DocumentItem, type HardwareInfoResponse, type HealthResponse, type ImageGenerateResponse, type InstallerManifestResponse, type LetterExportRequest, type LetterGenerateResponse, type LetterPreviewResponse, type LlmStatusResponse, type MediaListResponse, type ModelScanResponse, type PreflightCheckResponse, type RagAnswerResponse, type SbomResponse, type SearchResponse, type TableAnalyzeResponse, type TableInspectResponse, type TtsGenerateResponse } from './lib/api';
   let health: HealthResponse | null = null;
   let llmStatus: LlmStatusResponse | null = null;
   let hardwareInfo: HardwareInfoResponse | null = null;
   let modelScan: ModelScanResponse | null = null;
   let sbomInfo: SbomResponse | null = null;
+  let preflightInfo: PreflightCheckResponse | null = null;
+  let installerManifest: InstallerManifestResponse | null = null;
+  let buildingInstaller = false;
   let showSbomModal = false;
   let searchApiAvailable = false;
   let checking = true;
+
+  async function handleBuildInstaller() {
+    buildingInstaller = true;
+    try {
+      installerManifest = await buildInstallerManifest();
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Installer-Erstellung fehlgeschlagen.';
+    } finally {
+      buildingInstaller = false;
+    }
+  }
   let query = '';
   let activeItem = 'Start';
   let documents: DocumentItem[] = [];
@@ -176,6 +190,7 @@
       hardwareInfo = await fetchHardwareInfo().catch(() => null);
       modelScan = await fetchModelScan().catch(() => null);
       sbomInfo = await fetchSbom().catch(() => null);
+      preflightInfo = await fetchInstallerPreflight().catch(() => null);
       await loadMediaList();
       health = coreHealth;
       searchApiAvailable = true;
@@ -186,6 +201,7 @@
       hardwareInfo = null;
       modelScan = null;
       sbomInfo = null;
+      preflightInfo = null;
       mediaList = null;
       searchApiAvailable = false;
       lastError = error instanceof Error ? error.message : 'Backend nicht erreichbar.';
@@ -667,6 +683,27 @@
             <p style="margin: 2px 0 0; color: #7ed6ff;">GPU: {hardwareInfo.gpu_name || 'Standard-Grafikeinheit'}</p>
             <p style="margin: 2px 0 0; color: #8cff00;">Beschleunigung: {hardwareInfo.gpu_acceleration}</p>
             <small style="display: block; margin-top: 8px; color: #c0e4ff;">Empfohlenes Modellprofil: {hardwareInfo.recommended_profile}</small>
+          </div>
+        {/if}
+
+        {#if preflightInfo}
+          <div style="margin-top: 15px; padding: 16px; background: #041b38; border: 1px solid #4098d744; border-radius: 14px; font-size: 0.82rem;">
+            <b style="color: #70d8ff;">📦 Windows 11 Installer & Setup Generator (Gate 8)</b>
+            <p style="margin: 4px 0 0; color: #9ec9e9;">Betriebssystem-Kompatibilität: {preflightInfo.is_windows_11 ? '✓ Windows 11' : 'ℹ️ Windows'}</p>
+            <p style="margin: 2px 0 0; color: #9ec9e9;">Arbeitsspeicher-Check: {preflightInfo.ram_ok ? '✓ Ausreichend' : '⚠️ Unzureichend'}</p>
+            <p style="margin: 2px 0 0; color: #9ec9e9;">Speicherplatz-Check: {preflightInfo.disk_ok ? '✓ Ausreichend' : '⚠️ Unzureichend'}</p>
+
+            <button type="button" class="export-button" style="margin-top: 10px;" on:click={handleBuildInstaller} disabled={buildingInstaller}>
+              {buildingInstaller ? 'Erstelle Setup …' : '🚀 Inno Setup & 1-Click Skript generieren'}
+            </button>
+
+            {#if installerManifest}
+              <div style="margin-top: 10px; padding: 10px; background: #020a18; border: 1px solid #70d8ff66; border-radius: 8px;">
+                <b style="color: #8cff00; font-size: 0.78rem;">✓ Setup Skript erstellt:</b>
+                <p style="margin: 2px 0; font-size: 0.72rem; color: #9ec9e9;">.ISS Skript: {installerManifest.iss_script_path}</p>
+                <p style="margin: 2px 0; font-size: 0.72rem; color: #9ec9e9;">PowerShell Silent Setup: {installerManifest.silent_script_path}</p>
+              </div>
+            {/if}
           </div>
         {/if}
 

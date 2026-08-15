@@ -427,3 +427,37 @@ export async function analyzeTable(payload: TableAnalyzeRequest): Promise<TableA
   if (!response.ok) throw await responseError(response, 'Tabellen-Kalkulation fehlgeschlagen.');
   return response.json() as Promise<TableAnalyzeResponse>;
 }
+
+export type PreflightCheckResponse = {
+  is_windows_11: boolean;
+  win_version: string;
+  ram_gb: number;
+  ram_ok: boolean;
+  disk_free_gb: number;
+  disk_ok: boolean;
+  setup_ready: boolean;
+};
+
+export type InstallerManifestResponse = {
+  app_name: string;
+  version: string;
+  publisher: string;
+  iss_script_path: string;
+  silent_script_path: string;
+  target_os: string;
+  created_at: string;
+};
+
+export async function fetchInstallerPreflight(): Promise<PreflightCheckResponse> {
+  const response = await fetch(apiUrl('/api/v1/installer/preflight'));
+  if (!response.ok) throw new Error('Installer Preflight fehlgeschlagen.');
+  return response.json() as Promise<PreflightCheckResponse>;
+}
+
+export async function buildInstallerManifest(): Promise<InstallerManifestResponse> {
+  const response = await fetch(apiUrl('/api/v1/installer/build-manifest'), {
+    method: 'POST'
+  });
+  if (!response.ok) throw new Error('Installer Manifest konnte nicht erstellt werden.');
+  return response.json() as Promise<InstallerManifestResponse>;
+}
