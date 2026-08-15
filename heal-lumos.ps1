@@ -142,16 +142,27 @@ if (-not (Wait-HttpOk "$BackendUrl/api/v1/health" "Backend Healthcheck" 40)) {
     throw "Backend startet nicht korrekt. Siehe logs/backend.err.log und logs/backend.out.log."
 }
 
-Write-Step "RAG-Schnittstellen pruefen"
+Write-Step "RAG-Schnittstellen & Lokales LLM pruefen"
 Test-JsonPost "$BackendUrl/api/v1/search" @{ query = "__lumos_self_heal_probe__"; limit = 1 } "RAG-Suche" | Out-Null
 try {
     $Llm = Invoke-RestMethod "$BackendUrl/api/v1/llm/status" -TimeoutSec 5
     if ($Llm.generation_available) {
-        Write-Ok "Lokale KI-Antwort ist verfuegbar ($($Llm.model))"
-    } elseif ($Llm.configured) {
-        Write-Warn "Lokale KI ist konfiguriert, aber nicht erreichbar: $($Llm.last_error)"
+        Write-Ok "Lokale KI-Antwort ist bereits verfuegbar ($($Llm.model))"
     } else {
-        Write-Warn "Lokale KI ist optional und aktuell nicht konfiguriert."
+        $LlamaExe = Join-Path $ProjectRoot "tools\llama.cpp\b10375\llama-server.exe"
+        $ModelDir = Join-Path $ProjectRoot "models"
+        $GgufFile = Get-ChildItem -Path $ModelDir -Filter "*.gguf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+
+        if ((Test-Path $LlamaExe) -and $GgufFile) {
+            Write-Step "Starte lokales Sprachmodell (llama-server)"
+            & (Join-Path $ProjectRoot "start-llm.ps1") -ModelPath $GgufFile.FullName
+            Start-Sleep -Seconds 3
+            Write-Ok "llama-server gestartet mit Modell: $($GgufFile.Name)"
+        } elseif (-not (Test-Path $LlamaExe)) {
+            Write-Warn "llama-server.exe unter $LlamaExe nicht gefunden. Starte ohne automatisches LLM."
+        } else {
+            Write-Warn "Kein GGUF-Modell in models/ gefunden. Bitte Modell ablegen, um lokale KI-Antworten zu nutzen."
+        }
     }
 } catch {
     Write-Warn "LLM-Status konnte nicht geprueft werden: $($_.Exception.Message)"
